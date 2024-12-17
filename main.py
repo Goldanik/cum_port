@@ -17,7 +17,7 @@ class SerialMonitorGUI:
         self.parity = tk.StringVar(value="N")
         self.stopbits = tk.IntVar(value=1)
         self.encoding = tk.StringVar(value="O2")
-        self.skip_requests = False  # Флаг для пропуска запросов
+        self.skip_requests = True
 
         # Создание элементов интерфейса
         self.create_widgets()
@@ -26,11 +26,6 @@ class SerialMonitorGUI:
         self.ser = None
         self.serial_thread = None
         self.stop_event = threading.Event()
-
-        # Буфер для данных
-        self.data_buffer = ""
-        self.data_coded = "ff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff8faf2a"
-
 
     def create_widgets(self):
          # Frame для настроек COM-порта
@@ -53,19 +48,31 @@ class SerialMonitorGUI:
         ttk.Label(settings_frame, text="Стоп-биты:").grid(row=4, column=0, sticky="w")
         ttk.Combobox(settings_frame, textvariable=self.stopbits, values=[1, 1.5, 2], width=8).grid(row=4, column=1, padx=5)
 
+        # Кнопка "Открыть порт"
+        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.open_port)
+        self.open_button.grid(row=5, column=0, columnspan=1, pady=(10, 0))
+
+        # Кнопка "Сохранить лог"
+        self.save_log_button = ttk.Button(settings_frame, text="Сохранить лог", command=self.save_log_to_file)
+        self.save_log_button.grid(row=7, column=0, columnspan=1, pady=(5, 0))
+
+        # Add O2 settings
+        o2_frame = ttk.LabelFrame(self.master, text="Функции Орион 2")
+        o2_frame.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+
+        ttk.Radiobutton(o2_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0,
+                                                                                             sticky="w")
+        # Кнопка "Пропускать запросы"
+        self.skip_button = ttk.Button(o2_frame, text="Включен пропуск запросов", command=self.toggle_skip_requests)
+        self.skip_button.grid(row=6, column=0, columnspan=2, pady=(5, 0))
+
         # Add encoding settings
         encoding_frame = ttk.LabelFrame(self.master, text="Кодировка")
-        encoding_frame.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+        encoding_frame.grid(row=0, column=2, padx=10, pady=10, sticky="w")
 
-        ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX").grid(row=1, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="BIN", variable=self.encoding, value="BIN").grid(row=2, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII").grid(row=3, column=0, sticky="w")
-
-
-        # Кнопка "Открыть порт"
-        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.open_port)
-        self.open_button.grid(row=5, column=0, columnspan=2, pady=(10, 0))
 
         # Text widget для вывода данных с полосой прокрутки
         text_frame = ttk.Frame(self.master)
@@ -78,10 +85,6 @@ class SerialMonitorGUI:
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         scrollbar.config(command=self.text_area.yview)
-
-        # Кнопка "Пропускать запросы"
-        self.skip_button = ttk.Button(settings_frame, text="Пропускать запросы", command=self.toggle_skip_requests)
-        self.skip_button.grid(row=6, column=0, columnspan=2, pady=(5, 0))  # Разместите кнопку под "Открыть порт"
 
         # Настройка динамического изменения размеров
         self.master.grid_rowconfigure(1, weight=1)
@@ -109,12 +112,6 @@ class SerialMonitorGUI:
         except serial.SerialException as e:
             self.text_area.insert(tk.END, f"Ошибка открытия порта: {e}\n")
             return
-        # self.text_area.insert(tk.END, self.data_coded + "\n")
-        # data_mass = self.data_coded.encode(encoding = 'HEX')
-        # input_data = bytes([0xFF, 0x44, 0x41, 0x54, 0x41, 0x08, 0x01, 0x02, 0x03, 0xFE, 0x01, 0xFE, 0x02, 0x12, 0x34])
-        # input_data2 = bytes([0xff,0x02,0x1f,0x48,0x6f,0x1d])
-        # data_decoded = self.parse_packet(input_data2)
-        # self.text_area.insert(tk.END, data_decoded + "\n")
 
     def close_port(self):
         try:
@@ -141,6 +138,15 @@ class SerialMonitorGUI:
         else:
             self.skip_button.config(text="Пропускать запросы")
 
+    def save_log_to_file(self):
+        try:
+            # Открываем файл для записи
+            with open("log.txt", "w", encoding="utf-8") as log_file:
+                log_file.write(self.text_area.get("1.0", tk.END))  # Сохраняем содержимое text_area
+            self.text_area.insert(tk.END, "Лог успешно сохранен в файл 'log.txt'.\n")
+        except Exception as e:
+            self.text_area.insert(tk.END, f"Ошибка при сохранении лога: {e}\n")
+
     def read_serial(self):
         while not self.stop_event.is_set():
             try:
@@ -154,12 +160,14 @@ class SerialMonitorGUI:
                             decoded_data = decoded_data.replace("6f6c", "")
                             decoded_data = decoded_data.replace("ff021f48", "")
                             decoded_data = decoded_data.replace("6f1d", "")  # Удаляем ненужные строки
-                        if decoded_data:  # Проверка на пустую строку после удаления
+
+                        if decoded_data.strip():  # Проверка на пустую строку
                             lines = decoded_data.split('ff')  # Разбиваем по 'ff' в режиме HEX
                             for line in lines:
-                                timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                                formatted_data = f"{timestamp}: {line}"
-                                self.master.after(0, self.update_text_area, formatted_data)
+                                if line.strip():  # Проверяем каждую строку на пустоту
+                                    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                                    formatted_data = f"{timestamp}: {line}"
+                                    self.master.after(0, self.update_text_area, formatted_data)
                     elif self.encoding.get() == "HEX":
                         decoded_data = data.hex()
                     elif self.encoding.get() == "BIN":
