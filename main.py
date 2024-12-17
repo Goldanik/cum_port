@@ -3,6 +3,7 @@ from tkinter import ttk
 import serial
 import threading
 import datetime
+import crcmod
 
 class SerialMonitorGUI:
     def __init__(self, master):
@@ -10,12 +11,12 @@ class SerialMonitorGUI:
         master.title("COM Port Monitor")
 
         # Переменные для настроек COM-порта
-        self.port = tk.StringVar(value="COM1")
-        self.baudrate = tk.IntVar(value=9600)
+        self.port = tk.StringVar(value="COM10")
+        self.baudrate = tk.IntVar(value=115200)
         self.databits = tk.IntVar(value=8)
         self.parity = tk.StringVar(value="N")
         self.stopbits = tk.IntVar(value=1)
-        self.encoding = tk.StringVar(value="ASCII")
+        self.encoding = tk.StringVar(value="HEX")
 
         # Создание элементов интерфейса
         self.create_widgets()
@@ -27,6 +28,7 @@ class SerialMonitorGUI:
 
         # Буфер для данных
         self.data_buffer = ""
+        self.data_coded = "ff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff021f486f1dff011f6c6f6cff8faf2a"
 
 
     def create_widgets(self):
@@ -101,6 +103,12 @@ class SerialMonitorGUI:
         except serial.SerialException as e:
             self.text_area.insert(tk.END, f"Ошибка открытия порта: {e}\n")
             return
+        self.text_area.insert(tk.END, self.data_coded + "\n")
+        # data_mass = self.data_coded.encode(encoding = 'HEX')
+        # input_data = bytes([0xFF, 0x44, 0x41, 0x54, 0x41, 0x08, 0x01, 0x02, 0x03, 0xFE, 0x01, 0xFE, 0x02, 0x12, 0x34])
+        # input_data2 = bytes([0xff,0x02,0x1f,0x48,0x6f,0x1d])
+        # data_decoded = self.parse_packet(input_data2)
+        # self.text_area.insert(tk.END, data_decoded + "\n")
 
 
     def close_port(self):
@@ -115,26 +123,127 @@ class SerialMonitorGUI:
         except Exception as e:
             self.text_area.insert(tk.END, f"Ошибка закрытия порта: {e}\n")
 
+    def parse_packet(self, data):
+        """
+        Парсит входящий пакет данных согласно описанным требованиям.
+
+        :param data: Входящий поток байтов (bytes).
+        :return: Разобранные данные или сообщение об ошибке.
+        """
+        if not data:
+            return "Нет данных для парсинга."
+
+        # Этап 1: Замена последовательностей 0xFE, 0x01 -> 0xFF и 0xFE, 0x02 -> 0xFE
+        parsed_data = bytearray()
+        i = 0
+        while i < len(data):
+            if data[i] == 0xFE:
+                if i + 1 < len(data):
+                    if data[i + 1] == 0x01:
+                        parsed_data.append(0xFF)
+                        i += 2
+                    elif data[i + 1] == 0x02:
+                        parsed_data.append(0xFE)
+                        i += 2
+                    else:
+                        parsed_data.append(data[i])
+                        i += 1
+                else:
+                    parsed_data.append(data[i])
+                    i += 1
+            else:
+                parsed_data.append(data[i])
+                i += 1
+
+        # Этап 2: Проверка стартового символа 0xFF
+        if parsed_data[0] != 0xFF:
+            return "Ошибка: отсутствует стартовый символ 0xFF."
+
+        # Этап 3: Извлечение управляющего пакета (3 байта после стартового символа)
+        if len(parsed_data) < 4:
+            return "Ошибка: пакет слишком короткий для извлечения управляющего пакета."
+
+        # Распознаем тип управляющего пакета
+        if parsed_data[1] == 0x02:
+            session_type = "Передача данных"
+        elif parsed_data[1] == 0x01:  # "INQ" - запрос данных
+            session_type = "Запрос данных"
+        else:
+            return f"Ошибка: неизвестный управляющий пакет {parsed_data[1]}."
+
+        # Этап 4: Парсинг информационной телеграммы
+        if session_type == "Передача данных":
+            if len(parsed_data) < 5:
+                return "Ошибка: отсутствует информационная телеграмма."
+
+            # Поле длины Len (1 байт)
+            len_field = parsed_data[2]
+            if len_field > len(parsed_data) - 5:
+                return f"Ошибка: длина телеграммы указана некорректно {parsed_data[2]}."
+
+            # Заголовок и содержательная часть
+            payload = parsed_data[5:5 + len_field - 3]  # Заголовок + содержательная часть
+            header = payload[:-2]  # Исключаем CRC-16
+            crc_received = int.from_bytes(payload[-2:], "big")  # Последние 2 байта - CRC-16
+
+            # Этап 5: Проверка CRC-16
+            crc_calculator = crcmod.predefined.Crc('crc-16-modbus')  # Используем стандартный CRC-16 Modbus
+            crc_calculator.update(parsed_data[4:4 + len_field - 2])  # Вычисляем CRC-16
+            crc_calculated = crc_calculator.crcValue
+
+            if crc_calculated != crc_received:
+                return f"Ошибка: неверная контрольная сумма. Ожидалось {crc_calculated}, получено {crc_received}."
+
+            # Возвращаем разобранные данные
+            return {
+                "Тип сессии": session_type,
+                "Длина телеграммы": len_field,
+                "Заголовок": header,
+                "Содержательная часть": payload[:-2],
+                "CRC-16": crc_received
+            }
+
+        elif session_type == "Запрос данных":
+            # Запрос данных не содержит телеграммы, возвращаем информацию о запросе
+            return {
+                "Тип сессии": session_type,
+                "Управляющий пакет": control_packet
+            }
+
+        return "Ошибка: неизвестный тип сессии."
 
     def read_serial(self):
         while not self.stop_event.is_set():
             try:
                 if self.ser.in_waiting > 0:
-                    data = self.ser.read(self.ser.in_waiting)  # Чтение всех доступных данных
+                    data = self.ser.read(self.ser.in_waiting)
 
                     if self.encoding.get() == "HEX":
                         decoded_data = data.hex()
                     elif self.encoding.get() == "BIN":
                         decoded_data = ''.join(format(byte, '08b') for byte in data)
                     else:  # ASCII
-                        decoded_data = data.decode("ascii", errors="ignore")
+                        try:
+                            decoded_data = data.decode("ascii", errors="ignore")
+                        except UnicodeDecodeError:
+                            decoded_data = data.decode("latin-1", errors="ignore")  # or other encoding if known
 
-                    self.data_buffer += decoded_data  # Добавление в буфер
-                    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                    formatted_data = f"{timestamp}: {self.data_buffer}"
-                    self.data_buffer = ""  # Очистка буфера после вывода
-                    self.master.after(0, self.update_text_area, formatted_data)
+                    # self.data_buffer += decoded_data
 
+                    # Разбиваем буфер на строки по 0xFF (255 в десятичном виде)
+                    lines = []
+                    start = 0
+                    for i in range(len(decoded_data)):
+                        if decoded_data[i:i+2].lower() == "ff":  # or if data_buffer[i:i+2] == "ff" if HEX mode
+                            lines.append(decoded_data[start:i])
+                            start = i + 1
+                    lines.append(decoded_data[start:])  # Add last part
+                    # self.data_buffer = ""  # Clear buffer
+
+                    for line in lines:  # output each line with timestamp
+                        timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                        formatted_data = f"{timestamp}: {line}"
+                        self.master.after(0, self.update_text_area, formatted_data)
 
             except serial.SerialException as e:
                 self.master.after(0, self.update_text_area, f"Ошибка чтения данных: {e}\n")
