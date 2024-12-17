@@ -16,7 +16,8 @@ class SerialMonitorGUI:
         self.databits = tk.IntVar(value=8)
         self.parity = tk.StringVar(value="N")
         self.stopbits = tk.IntVar(value=1)
-        self.encoding = tk.StringVar(value="HEX")
+        self.encoding = tk.StringVar(value="O2")
+        self.skip_requests = False  # Флаг для пропуска запросов
 
         # Создание элементов интерфейса
         self.create_widgets()
@@ -56,9 +57,10 @@ class SerialMonitorGUI:
         encoding_frame = ttk.LabelFrame(self.master, text="Кодировка")
         encoding_frame.grid(row=0, column=1, padx=10, pady=10, sticky="w")
 
-        ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX").grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(encoding_frame, text="BIN", variable=self.encoding, value="BIN").grid(row=1, column=0, sticky="w")
-        ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII").grid(row=2, column=0, sticky="w")
+        ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0, sticky="w")
+        ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX").grid(row=1, column=0, sticky="w")
+        ttk.Radiobutton(encoding_frame, text="BIN", variable=self.encoding, value="BIN").grid(row=2, column=0, sticky="w")
+        ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII").grid(row=3, column=0, sticky="w")
 
 
         # Кнопка "Открыть порт"
@@ -76,6 +78,10 @@ class SerialMonitorGUI:
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         scrollbar.config(command=self.text_area.yview)
+
+        # Кнопка "Пропускать запросы"
+        self.skip_button = ttk.Button(settings_frame, text="Пропускать запросы", command=self.toggle_skip_requests)
+        self.skip_button.grid(row=6, column=0, columnspan=2, pady=(5, 0))  # Разместите кнопку под "Открыть порт"
 
         # Настройка динамического изменения размеров
         self.master.grid_rowconfigure(1, weight=1)
@@ -128,16 +134,12 @@ class SerialMonitorGUI:
         finally:
             self.serial_thread = None  # Очищаем ссылку на поток
 
-    def skip_req(self, data):
-        parsed_data = bytearray(data)
-
-        # Распознаем тип управляющего пакета
-        if parsed_data[0] == 0x02:
-            session_type = "Передача данных"
-            data.split("48")
-        elif parsed_data[0] == 0x01:  # "INQ" - запрос данных
-            session_type = "Запрос данных"
-            data.split("6C")
+    def toggle_skip_requests(self):
+        self.skip_requests = not self.skip_requests
+        if self.skip_requests:
+            self.skip_button.config(text="Включен пропуск запросов")
+        else:
+            self.skip_button.config(text="Пропускать запросы")
 
     def read_serial(self):
         while not self.stop_event.is_set():
@@ -145,7 +147,20 @@ class SerialMonitorGUI:
                 if self.ser.in_waiting > 0:
                     data = self.ser.read(self.ser.in_waiting)
 
-                    if self.encoding.get() == "HEX":
+                    if self.encoding.get() == "O2":
+                        decoded_data = data.hex()
+                        if self.skip_requests:
+                            decoded_data = decoded_data.replace("ff011f6c", "")
+                            decoded_data = decoded_data.replace("6f6c", "")
+                            decoded_data = decoded_data.replace("ff021f48", "")
+                            decoded_data = decoded_data.replace("6f1d", "")  # Удаляем ненужные строки
+                        if decoded_data:  # Проверка на пустую строку после удаления
+                            lines = decoded_data.split('ff')  # Разбиваем по 'ff' в режиме HEX
+                            for line in lines:
+                                timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                                formatted_data = f"{timestamp}: {line}"
+                                self.master.after(0, self.update_text_area, formatted_data)
+                    elif self.encoding.get() == "HEX":
                         decoded_data = data.hex()
                     elif self.encoding.get() == "BIN":
                         decoded_data = ''.join(format(byte, '08b') for byte in data)
@@ -156,14 +171,7 @@ class SerialMonitorGUI:
                             decoded_data = data.decode("latin-1", errors="ignore")
 
 
-                    if self.encoding.get() == "HEX":
-                        lines = decoded_data.split('ff') # Разбиваем по 'ff' в режиме HEX
-                        for line in lines:
-                            timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                            formatted_data = f"{timestamp}: {line}"
-                            self.master.after(0, self.update_text_area, formatted_data)
-
-                    else:
+                    if self.encoding.get() != "O2":
                         timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
                         formatted_data = f"{timestamp}: {decoded_data}"
                         self.master.after(0, self.update_text_area, formatted_data)
