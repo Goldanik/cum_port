@@ -1,3 +1,4 @@
+import re
 import tkinter as tk
 from tkinter import ttk
 import serial
@@ -18,6 +19,18 @@ class SerialMonitorGUI:
         self.stopbits = tk.IntVar(value=1)
         self.encoding = tk.StringVar(value="O2")
         self.skip_requests = True
+
+        self.req_pattern1 = "ff011f6c"
+        self.req_pattern2 = "ff021f48"
+        self.ack_pattern1 = "6f6c"
+        self.ack_pattern2 = "6f1d"
+
+        self.counter_req = 0
+        self.counter_ack = 0  # Counter for second type of request
+        self.custom_skip_pattern = tk.StringVar(value="")  # Для пользовательского шаблона
+        self.counter_custom = 0  # Счетчик для пользовательского шаблона
+
+        self.data_buffer = ""  # Буфер для накопления данных
 
         # Создание элементов интерфейса
         self.create_widgets()
@@ -56,9 +69,36 @@ class SerialMonitorGUI:
         self.save_log_button = ttk.Button(settings_frame, text="Сохранить лог", command=self.save_log_to_file)
         self.save_log_button.grid(row=7, column=0, columnspan=1, pady=(5, 0))
 
+        # Clear Screen button
+        self.clear_button = ttk.Button(settings_frame, text="Очистить экран", command=self.clear_screen)
+        self.clear_button.grid(row=7, column=1, pady=(5, 0))
+
         # Add O2 settings
         o2_frame = ttk.LabelFrame(self.master, text="Функции Орион 2")
         o2_frame.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+
+        # Сounters display
+        self.counter_frame = ttk.LabelFrame(o2_frame, text="Счетчики пропущенных запросов")
+        self.counter_frame.grid(row=7, column=0, pady=(5, 0), sticky="w")
+
+        # В counter_frame добавим поле для пользовательского шаблона
+        self.custom_pattern_frame = ttk.Frame(self.counter_frame)
+        self.custom_pattern_frame.grid(row=2, column=0, padx=5, pady=2, sticky="w")
+
+        ttk.Label(self.custom_pattern_frame, text="Свой шаблон:").grid(row=0, column=0, padx=(0, 5))
+        self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern,
+                                               width=10)
+        self.custom_pattern_entry.grid(row=0, column=1)
+
+        # Добавим счетчик для пользовательского шаблона
+        self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон: 0")
+        self.counter_label_custom.grid(row=3, column=0, padx=5, pady=2, sticky="w")
+
+        self.counter_label1 = ttk.Label(self.counter_frame, text="Запросы: 0")
+        self.counter_label1.grid(row=0, column=0, padx=5, pady=2, sticky="w")
+
+        self.counter_label2 = ttk.Label(self.counter_frame, text="Ответы: 0")
+        self.counter_label2.grid(row=1, column=0, padx=5, pady=2, sticky="w")
 
         ttk.Radiobutton(o2_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0,
                                                                                              sticky="w")
@@ -138,6 +178,22 @@ class SerialMonitorGUI:
         else:
             self.skip_button.config(text="Пропускать запросы")
 
+    def clear_screen(self):
+        self.counter_req = 0
+        self.counter_ack = 0
+        self.counter_custom = 0
+        self.update_counters()
+        self.text_area.delete(1.0, tk.END)
+
+    def update_counters(self):
+        self.counter_label1.config(text=f"Запросы: {self.counter_req}")
+        self.counter_label2.config(text=f"Ответы: {self.counter_ack}")
+        custom_pattern = self.custom_skip_pattern.get()
+        if custom_pattern:
+            self.counter_label_custom.config(text=f"Свой шаблон ({custom_pattern}): {self.counter_custom}")
+        else:
+            self.counter_label_custom.config(text="Свой шаблон: 0")
+
     def save_log_to_file(self):
         try:
             # Открываем файл для записи
@@ -156,10 +212,23 @@ class SerialMonitorGUI:
                     if self.encoding.get() == "O2":
                         decoded_data = data.hex()
                         if self.skip_requests:
-                            decoded_data = decoded_data.replace("ff011f6c", "")
-                            decoded_data = decoded_data.replace("6f6c", "")
-                            decoded_data = decoded_data.replace("ff021f48", "")
-                            decoded_data = decoded_data.replace("6f1d", "")  # Удаляем ненужные строки
+                            # Count occurrences before removing
+                            self.counter_req += decoded_data.count(self.req_pattern1) + decoded_data.count(self.req_pattern2)
+                            self.counter_ack += decoded_data.count(self.ack_pattern1) + decoded_data.count(self.ack_pattern2)
+
+                            # Подсчет пользовательского шаблона
+                            custom_pattern = self.custom_skip_pattern.get().lower()
+                            if custom_pattern:
+                                self.counter_custom += decoded_data.count(custom_pattern)
+                                decoded_data = decoded_data.replace(custom_pattern, "")
+
+                            # Обновляем все счетчики
+                            self.master.after(0, self.update_counters)
+
+                            decoded_data = decoded_data.replace(self.req_pattern1, "")
+                            decoded_data = decoded_data.replace(self.ack_pattern1, "")
+                            decoded_data = decoded_data.replace(self.req_pattern2, "")
+                            decoded_data = decoded_data.replace(self.ack_pattern2, "")  # Удаляем ненужные строки
 
                         if decoded_data.strip():  # Проверка на пустую строку
                             lines = decoded_data.split('ff')  # Разбиваем по 'ff' в режиме HEX
@@ -205,18 +274,3 @@ class SerialMonitorGUI:
 root = tk.Tk()
 app = SerialMonitorGUI(root)
 root.mainloop()
-
-# Основные изменения и дополнения:
-
-# Обработка ошибок: Добавлены блоки try-except для обработки ошибок открытия/закрытия порта и чтения данных.
-# Декодирование: Добавлена декодировка decode('utf-8', errors='replace') для преобразования байтов в строку. errors='replace' заменяет некорректные символы, предотвращая ошибки.
-# Закрытие порта: Реализована функция close_port() для корректного закрытия порта и остановки потока чтения.
-# Поток чтения: Чтение данных из COM-порта происходит в отдельном потоке (threading), чтобы не блокировать графический интерфейс. Используется daemon=True, чтобы поток завершался при закрытии основного приложения.
-# Обновление интерфейса: self.master.after(0, self.update_text_area, data) используется для обновления text_area в главном потоке, что необходимо для корректной работы Tkinter.
-# Автопрокрутка: self.text_area.see(tk.END) добавлена для автоматической прокрутки к последней строке в text_area.
-# Флаг остановки: threading.Event() используется для корректной остановки потока чтения при закрытии порта.
-#Импорт datetime: Добавлен импорт модуля datetime для работы с временем.
-#Получение метки времени: Внутри цикла read_serial, перед выводом данных, добавлена строка: timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-#Эта строка получает текущее время и форматирует его в виде строки "ГГГГ-ММ-ДД ЧЧ:ММ:СС". Вы можете изменить формат, если нужно.
-#Форматирование вывода: Данные и метка времени объединяются в одну строку: formatted_data = f"{timestamp}: {data}"
-#Теперь formatted_data содержит строку с меткой времени и данными, разделенными двоеточием и пробелом.
