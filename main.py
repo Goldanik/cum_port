@@ -223,6 +223,9 @@ class SerialMonitorGUI:
                                 # Если больше нет маркеров, берём весь оставшийся буфер
                                 packet = self.data_buffer
                                 self.data_buffer = ""
+                            elif next_ff % 2 != 0:
+                                packet = self.data_buffer[:next_ff+1]
+                                self.data_buffer = self.data_buffer[next_ff+1:]
                             else:
                                 # Берём данные до следующего маркера
                                 packet = self.data_buffer[:next_ff]
