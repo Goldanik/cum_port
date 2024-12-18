@@ -30,6 +30,7 @@ class SerialMonitorGUI:
         self.custom_skip_pattern = tk.StringVar(value="")  # Для пользовательского шаблона
         self.counter_custom = 0  # Счетчик для пользовательского шаблона
 
+        self.MAX_BUFFER_SIZE = 1024 * 1024  # 1 MB
         self.data_buffer = ""  # Буфер для накопления данных
 
         # Создание элементов интерфейса
@@ -210,33 +211,44 @@ class SerialMonitorGUI:
                     data = self.ser.read(self.ser.in_waiting)
 
                     if self.encoding.get() == "O2":
-                        decoded_data = data.hex()
-                        if self.skip_requests:
-                            # Count occurrences before removing
-                            self.counter_req += decoded_data.count(self.req_pattern1) + decoded_data.count(self.req_pattern2)
-                            self.counter_ack += decoded_data.count(self.ack_pattern1) + decoded_data.count(self.ack_pattern2)
+                        # Добавляем новые данные в буфер
+                        self.data_buffer += data.hex()
 
-                            # Подсчет пользовательского шаблона
-                            custom_pattern = self.custom_skip_pattern.get().lower()
-                            if custom_pattern:
-                                self.counter_custom += decoded_data.count(custom_pattern)
-                                decoded_data = decoded_data.replace(custom_pattern, "")
+                        # Ищем полные пакеты в буфере
+                        while 'ff' in self.data_buffer:
+                            # Находим индекс следующего маркера начала пакета
+                            next_ff = self.data_buffer.find('ff', 2)
 
-                            # Обновляем все счетчики
-                            self.master.after(0, self.update_counters)
+                            if next_ff == -1:
+                                # Если больше нет маркеров, берём весь оставшийся буфер
+                                packet = self.data_buffer
+                                self.data_buffer = ""
+                            else:
+                                # Берём данные до следующего маркера
+                                packet = self.data_buffer[:next_ff]
+                                self.data_buffer = self.data_buffer[next_ff:]
 
-                            decoded_data = decoded_data.replace(self.req_pattern1, "")
-                            decoded_data = decoded_data.replace(self.ack_pattern1, "")
-                            decoded_data = decoded_data.replace(self.req_pattern2, "")
-                            decoded_data = decoded_data.replace(self.ack_pattern2, "")  # Удаляем ненужные строки
+                            if self.skip_requests:
+                                # Подсчёт и удаление шаблонов из целого пакета
+                                self.counter_req += packet.count(self.req_pattern1) + packet.count(self.req_pattern2)
+                                self.counter_ack += packet.count(self.ack_pattern1) + packet.count(self.ack_pattern2)
 
-                        if decoded_data.strip():  # Проверка на пустую строку
-                            lines = decoded_data.split('ff')  # Разбиваем по 'ff' в режиме HEX
-                            for line in lines:
-                                if line.strip():  # Проверяем каждую строку на пустоту
-                                    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                                    formatted_data = f"{timestamp}: {line}"
-                                    self.master.after(0, self.update_text_area, formatted_data)
+                                custom_pattern = self.custom_skip_pattern.get().lower()
+                                if custom_pattern:
+                                    self.counter_custom += packet.count(custom_pattern)
+                                    packet = packet.replace(custom_pattern, "")
+
+                                packet = packet.replace(self.req_pattern1, "")
+                                packet = packet.replace(self.ack_pattern1, "")
+                                packet = packet.replace(self.req_pattern2, "")
+                                packet = packet.replace(self.ack_pattern2, "")
+
+                                self.master.after(0, self.update_counters)
+
+                            if packet.strip():
+                                timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                                formatted_data = f"{timestamp}: {packet}"
+                                self.master.after(0, self.update_text_area, formatted_data)
                     elif self.encoding.get() == "HEX":
                         decoded_data = data.hex()
                     elif self.encoding.get() == "BIN":
@@ -252,6 +264,9 @@ class SerialMonitorGUI:
                         timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
                         formatted_data = f"{timestamp}: {decoded_data}"
                         self.master.after(0, self.update_text_area, formatted_data)
+
+                    if len(self.data_buffer) > self.MAX_BUFFER_SIZE:
+                        self.data_buffer = self.data_buffer[-self.MAX_BUFFER_SIZE:]
 
 
             except serial.SerialException as e:
