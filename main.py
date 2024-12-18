@@ -26,7 +26,8 @@ class SerialMonitorGUI:
         self.ack_pattern2 = "6f1d"
 
         self.counter_req = 0
-        self.counter_ack = 0  # Counter for second type of request
+        self.counter_ack = 0
+        self.counter_search = 0
         self.custom_skip_pattern = tk.StringVar(value="")  # Для пользовательского шаблона
         self.counter_custom = 0  # Счетчик для пользовательского шаблона
 
@@ -84,22 +85,25 @@ class SerialMonitorGUI:
 
         # В counter_frame добавим поле для пользовательского шаблона
         self.custom_pattern_frame = ttk.Frame(self.counter_frame)
-        self.custom_pattern_frame.grid(row=2, column=0, padx=5, pady=2, sticky="w")
+        self.custom_pattern_frame.grid(row=4, column=0, padx=5, pady=2, sticky="w")
 
         ttk.Label(self.custom_pattern_frame, text="Свой шаблон:").grid(row=0, column=0, padx=(0, 5))
         self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern,
                                                width=10)
         self.custom_pattern_entry.grid(row=0, column=1)
 
+        self.counter_label1 = ttk.Label(self.counter_frame, text="IN: 0")
+        self.counter_label1.grid(row=0, column=0, padx=5, pady=2, sticky="w")
+
+        self.counter_label2 = ttk.Label(self.counter_frame, text="ACK: 0")
+        self.counter_label2.grid(row=1, column=0, padx=5, pady=2, sticky="w")
+
+        self.counter_label3 = ttk.Label(self.counter_frame, text="SEARCH: 0")
+        self.counter_label3.grid(row=2, column=0, padx=5, pady=2, sticky="w")
+
         # Добавим счетчик для пользовательского шаблона
         self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон: 0")
         self.counter_label_custom.grid(row=3, column=0, padx=5, pady=2, sticky="w")
-
-        self.counter_label1 = ttk.Label(self.counter_frame, text="Запросы: 0")
-        self.counter_label1.grid(row=0, column=0, padx=5, pady=2, sticky="w")
-
-        self.counter_label2 = ttk.Label(self.counter_frame, text="Ответы: 0")
-        self.counter_label2.grid(row=1, column=0, padx=5, pady=2, sticky="w")
 
         ttk.Radiobutton(o2_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0,
                                                                                              sticky="w")
@@ -182,13 +186,15 @@ class SerialMonitorGUI:
     def clear_screen(self):
         self.counter_req = 0
         self.counter_ack = 0
+        self.counter_search = 0
         self.counter_custom = 0
         self.update_counters()
         self.text_area.delete(1.0, tk.END)
 
     def update_counters(self):
-        self.counter_label1.config(text=f"Запросы: {self.counter_req}")
-        self.counter_label2.config(text=f"Ответы: {self.counter_ack}")
+        self.counter_label1.config(text=f"IN: {self.counter_req}")
+        self.counter_label2.config(text=f"ACK: {self.counter_ack}")
+        self.counter_label3.config(text=f"SEARCH: {self.counter_search}")
         custom_pattern = self.custom_skip_pattern.get()
         if custom_pattern:
             self.counter_label_custom.config(text=f"Свой шаблон ({custom_pattern}): {self.counter_custom}")
@@ -235,6 +241,8 @@ class SerialMonitorGUI:
                                 # Подсчёт и удаление шаблонов из целого пакета
                                 self.counter_req += packet.count(self.req_pattern1) + packet.count(self.req_pattern2)
                                 self.counter_ack += packet.count(self.ack_pattern1) + packet.count(self.ack_pattern2)
+                                if next_ff == 14:
+                                    self.counter_search += 1
 
                                 custom_pattern = self.custom_skip_pattern.get().lower()
                                 if custom_pattern:
@@ -245,6 +253,8 @@ class SerialMonitorGUI:
                                 packet = packet.replace(self.ack_pattern1, "")
                                 packet = packet.replace(self.req_pattern2, "")
                                 packet = packet.replace(self.ack_pattern2, "")
+                                if next_ff == 14:
+                                    packet = ""
 
                                 self.master.after(0, self.update_counters)
 
