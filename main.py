@@ -41,7 +41,7 @@ class SerialMonitorGUI:
         self.log_stop_event = threading.Event()
 
         self.MAX_BUFFER_SIZE = 1024 * 1024  # 1 MB
-        self.MAX_TABLE_SIZE = 5000
+        self.MAX_TABLE_SIZE = 10000
 
         # Создание элементов интерфейса
         self.create_widgets()
@@ -317,6 +317,8 @@ class SerialMonitorGUI:
                                 packet = self.data_buffer
                                 self.data_buffer = ""
                             elif next_ff % 2 != 0:
+                                # Если длина в битах нечетная, вероятно пакет разбит не правильно (например из-за F на конце пакета)
+                                # в этом случае дополняем пакет до четного размера и парсинг следующего начинаем со следующего элемента
                                 packet = self.data_buffer[:next_ff+1]
                                 self.data_buffer = self.data_buffer[next_ff+1:]
                             else:
@@ -328,18 +330,23 @@ class SerialMonitorGUI:
                                 # Подсчёт и удаление шаблонов из целого пакета
                                 self.counter_req += packet.count(self.req_pattern1) + packet.count(self.req_pattern2)
                                 self.counter_ack += packet.count(self.ack_pattern1) + packet.count(self.ack_pattern2)
+                                # Временный функционал подсчета пакетов SEARCH известной длины
                                 if next_ff == 14:
                                     self.counter_search += 1
 
                                 custom_pattern = self.custom_skip_pattern.get().lower()
                                 if custom_pattern:
-                                    self.counter_custom += packet.count(custom_pattern)
-                                    packet = packet.replace(custom_pattern, "")
+                                    try:
+                                        self.counter_custom += packet.count(custom_pattern)
+                                        packet = packet.replace(custom_pattern, "")
+                                    except Exception as e:
+                                        self.update_message_area(f"Ошибка обработки пользовательского шаблона: {e}")
 
                                 packet = packet.replace(self.req_pattern1, "")
                                 packet = packet.replace(self.ack_pattern1, "")
                                 packet = packet.replace(self.req_pattern2, "")
                                 packet = packet.replace(self.ack_pattern2, "")
+                                # Временный функционал отрезки пакетов SEARCH известной длины
                                 if next_ff == 14:
                                     packet = ""
 
@@ -366,7 +373,9 @@ class SerialMonitorGUI:
 
                     # Проверка размера буфера
                     if len(self.data_buffer) > self.MAX_BUFFER_SIZE:
-                        self.data_buffer = self.data_buffer[-self.MAX_BUFFER_SIZE:]
+                        processed_data = self.data_buffer[:self.MAX_BUFFER_SIZE]
+                        self.data_buffer = self.data_buffer[self.MAX_BUFFER_SIZE:]
+                        self.process_data(processed_data)
                         self.update_message_area("Предупреждение: буфер данных был очищен из-за превышения размера")
             except serial.SerialException as e:
                 if not self.stop_event.is_set():  # Выводим ошибку только если это не закрытие порта
@@ -385,8 +394,8 @@ class SerialMonitorGUI:
             # Здесь можно добавить декодированные данные
             decoded_data = ""  # Оставляем пустым для примера
 
-            # Обновляем дерево (GUI)
-            self.tree.insert('', 0, values=(timestamp, raw_data, decoded_data))
+            # Обновляем дерево (GUI) из главного потока
+            self.master.after(0, lambda: self.tree.insert('', 0, values=(timestamp, raw_data, decoded_data)))
 
             # Ограничиваем количество строк в дереве
             if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
