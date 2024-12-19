@@ -3,6 +3,7 @@ from tkinter import ttk
 import serial
 import threading
 import datetime
+import time
 
 class SerialMonitorGUI:
     def __init__(self, master):
@@ -29,8 +30,11 @@ class SerialMonitorGUI:
         self.custom_skip_pattern = tk.StringVar(value="")  # Для пользовательского шаблона
         self.counter_custom = 0  # Счетчик для пользовательского шаблона
 
-        self.MAX_BUFFER_SIZE = 1024 * 1024  # 1 MB
         self.data_buffer = ""  # Буфер для накопления данных
+
+        self.log_file = "log.txt"
+        self.log_thread = None
+        self.log_stop_event = threading.Event()
 
         # Создание элементов интерфейса
         self.create_widgets()
@@ -63,15 +67,11 @@ class SerialMonitorGUI:
 
         # Кнопка "Открыть порт"
         self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.open_port)
-        self.open_button.grid(row=5, column=0, columnspan=1, pady=(10, 0))
-
-        # Кнопка "Сохранить лог"
-        self.save_log_button = ttk.Button(settings_frame, text="Сохранить лог", command=self.save_log_to_file)
-        self.save_log_button.grid(row=7, column=0, columnspan=1, pady=(5, 0))
+        self.open_button.grid(row=5, column=0, pady=(5, 0))
 
         # Clear Screen button
         self.clear_button = ttk.Button(settings_frame, text="Очистить экран", command=self.clear_screen)
-        self.clear_button.grid(row=7, column=1, pady=(5, 0))
+        self.clear_button.grid(row=6, column=0, pady=(5, 0))
 
         # Add O2 settings
         o2_frame = ttk.LabelFrame(self.master, text="Функции Орион 2")
@@ -173,6 +173,7 @@ class SerialMonitorGUI:
 
             self.open_button.config(text="Закрыть порт", command=self.close_port)
             self.start_reading()
+            self.start_log_thread()
             self.update_message_area(f"Порт {self.port.get()} открыт.")
         except serial.SerialException as e:
             self.update_message_area(f"Ошибка открытия порта: {e}")
@@ -190,6 +191,7 @@ class SerialMonitorGUI:
 
             self.open_button.config(text="Открыть порт", command=self.open_port)
             self.update_message_area("Порт закрыт.")
+            self.stop_log_thread()
 
         except Exception as e:
             self.update_message_area(f"Ошибка закрытия порта: {e}")
@@ -250,6 +252,27 @@ class SerialMonitorGUI:
             self.update_message_area("Лог успешно сохранен в файл 'log.txt'.")
         except Exception as e:
             self.update_message_area(f"Ошибка при сохранении лога: {e}")
+
+    def start_log_thread(self):
+        self.log_stop_event.clear()
+        self.log_thread = threading.Thread(target=self.log_data_to_file, daemon=True)
+        self.log_thread.start()
+
+    def log_data_to_file(self):
+        while not self.log_stop_event.is_set():
+            try:
+                with open(self.log_file, "w", encoding="utf-8") as log_file:
+                    for item in self.tree.get_children():
+                        values = self.tree.item(item)['values']
+                        log_file.write('\t'.join(str(v) for v in values) + "\n")
+            except Exception as e:
+                self.update_message_area(f"Ошибка при записи лога: {e}")
+            time.sleep(1)  # Записываем лог каждую секунду
+
+    def stop_log_thread(self):
+        self.log_stop_event.set()
+        if self.log_thread and self.log_thread.is_alive():
+            self.log_thread.join(timeout=1.0)
 
     def read_serial(self):
         while not self.stop_event.is_set():
@@ -319,10 +342,6 @@ class SerialMonitorGUI:
                         formatted_data = f"{timestamp}: {decoded_data}"
                         self.master.after(0, self.update_text_area, formatted_data)
 
-                    if len(self.data_buffer) > self.MAX_BUFFER_SIZE:
-                        self.data_buffer = self.data_buffer[-self.MAX_BUFFER_SIZE:]
-
-
             except serial.SerialException as e:
                 self.update_message_area(f"Ошибка чтения данных: {e}")
                 self.close_port()
@@ -341,7 +360,7 @@ class SerialMonitorGUI:
             self.tree.insert('', 0, values=(time, raw_data, decoded_data))
 
             # Optional: limit the number of rows to prevent memory issues
-            if self.tree.get_children().__len__() > 1000:  # Keep last 1000 rows
+            if self.tree.get_children().__len__() > 2000:  # Keep last 1000 rows
                 self.tree.delete(self.tree.get_children()[-1])
 
 
