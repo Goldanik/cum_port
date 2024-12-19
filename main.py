@@ -1,3 +1,4 @@
+import queue
 import tkinter as tk
 from tkinter import ttk
 import serial
@@ -35,8 +36,12 @@ class SerialMonitorGUI:
         self.log_file = "log.txt"
         self.log_thread = None
         self.log_stop_event = threading.Event()
+        self.log_queue = queue.Queue()  # Очередь для передачи данных в лог
+        self.log_thread = None
+        self.log_stop_event = threading.Event()
 
         self.MAX_BUFFER_SIZE = 1024 * 1024  # 1 MB
+        self.MAX_TABLE_SIZE = 5000
 
         # Создание элементов интерфейса
         self.create_widgets()
@@ -251,37 +256,44 @@ class SerialMonitorGUI:
         self.message_area.see(tk.END)  # Прокручиваем к последнему сообщению
         self.message_area.config(state=tk.DISABLED)  # Запрещаем редактирование
 
-    def save_log_to_file(self):
-        try:
-            # Открываем файл для записи
-            with open("log.txt", "w", encoding="utf-8") as log_file:
-                log_file.write(self.text_area.get("1.0", tk.END))  # Сохраняем содержимое text_area
-            self.update_message_area("Лог успешно сохранен в файл 'log.txt'.")
-        except Exception as e:
-            self.update_message_area(f"Ошибка при сохранении лога: {e}")
-
     def start_log_thread(self):
+        """Запускаем поток для записи лога"""
         self.log_stop_event.clear()
         self.log_thread = threading.Thread(target=self.log_data_to_file, daemon=True)
         self.log_thread.start()
 
     def log_data_to_file(self):
+        """Фоновый поток для записи лога"""
         while not self.log_stop_event.is_set():
             try:
-                with open(self.log_file, "w", encoding="utf-8") as log_file:
-                    for item in self.tree.get_children():
-                        values = self.tree.item(item)['values']
-                        log_file.write('\t'.join(str(v) for v in values) + "\n")
+                # Пытаемся получить данные из очереди
+                try:
+                    data = self.log_queue.get(timeout=1)  # Ждем максимум 1 секунду
+                except queue.Empty:
+                    continue  # Если нет данных, продолжаем ожидание
+
+                # Пишем данные в файл
+                with open(self.log_file, "a", encoding="utf-8", buffering=1) as log_file:
+                    log_file.write(data + "\n")
             except Exception as e:
                 self.update_message_area(f"Ошибка при записи лога: {e}")
             time.sleep(1)  # Записываем лог каждую секунду
 
+    def write_log_to_file(self, log_data):  # Новая функция для записи в главном потоке
+        try:
+            with open(self.log_file, "w", encoding="utf-8") as log_file:
+                log_file.writelines(log_data) # Используем writelines для повышения эффективности
+        except Exception as e:
+            self.update_message_area(f"Ошибка при записи лога: {e}")
+
     def stop_log_thread(self):
+        """Останавливаем поток записи лога"""
         self.log_stop_event.set()
         if self.log_thread and self.log_thread.is_alive():
             self.log_thread.join(timeout=1.0)
 
     def read_serial(self):
+        """Чтение данных из порта"""
         while not self.stop_event.is_set():
             try:
                 if self.ser.in_waiting > 0 and not self.stop_event.is_set():  # Добавляем проверку флага
@@ -290,7 +302,7 @@ class SerialMonitorGUI:
                     # Если порт закрывается, прекращаем обработку данных
                     if self.stop_event.is_set():
                         break
-
+                    # Обработка данных
                     if self.encoding.get() == "O2":
                         # Добавляем новые данные в буфер
                         self.data_buffer += data.hex()
@@ -354,9 +366,8 @@ class SerialMonitorGUI:
 
                     # Проверка размера буфера
                     if len(self.data_buffer) > self.MAX_BUFFER_SIZE:
-                        self.data_buffer = self.data_buffer[-self.MAX_BUFFER_SIZE:]  # Оставляем только последнюю часть
+                        self.data_buffer = self.data_buffer[-self.MAX_BUFFER_SIZE:]
                         self.update_message_area("Предупреждение: буфер данных был очищен из-за превышения размера")
-
             except serial.SerialException as e:
                 if not self.stop_event.is_set():  # Выводим ошибку только если это не закрытие порта
                     self.update_message_area(f"Ошибка чтения данных: {e}")
@@ -364,20 +375,25 @@ class SerialMonitorGUI:
                 break
 
     def update_text_area(self, formatted_data):
-        # Split the formatted data into time and data parts
+        """Обновление данных в дереве и отправка их в очередь для записи"""
+        # Разделяем данные на время и содержимое
         parts = formatted_data.split(': ', 1)
         if len(parts) == 2:
-            time = parts[0]
+            timestamp = parts[0]
             raw_data = parts[1].strip()
-            # Here you can add logic to decode/process the raw_data if needed
-            decoded_data = ""  # For now, just using the same data
 
-            # Insert at the beginning of the tree
-            self.tree.insert('', 0, values=(time, raw_data, decoded_data))
+            # Здесь можно добавить декодированные данные
+            decoded_data = ""  # Оставляем пустым для примера
 
-            # Optional: limit the number of rows to prevent memory issues
-            if self.tree.get_children().__len__() > 2000:  # Keep last 1000 rows
+            # Обновляем дерево (GUI)
+            self.tree.insert('', 0, values=(timestamp, raw_data, decoded_data))
+
+            # Ограничиваем количество строк в дереве
+            if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
                 self.tree.delete(self.tree.get_children()[-1])
+
+            # Отправляем данные в очередь для записи в лог
+            self.log_queue.put(f"{timestamp}\t{raw_data}\t{decoded_data}")
 
 
     def start_reading(self):
