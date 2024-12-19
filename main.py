@@ -117,17 +117,28 @@ class SerialMonitorGUI:
         ttk.Radiobutton(encoding_frame, text="BIN", variable=self.encoding, value="BIN").grid(row=2, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII").grid(row=3, column=0, sticky="w")
 
-        # Text widget для вывода данных с полосой прокрутки
-        text_frame = ttk.Frame(self.master)
-        text_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="nsew")
-
-        scrollbar = ttk.Scrollbar(text_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.text_area = tk.Text(text_frame, wrap=tk.WORD, yscrollcommand=scrollbar.set)
-        self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        scrollbar.config(command=self.text_area.yview)
+        tree_frame = ttk.Frame(self.master)
+        tree_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="nsew")
+        # Create Treeview
+        self.tree = ttk.Treeview(tree_frame, columns=("time", "raw_data", "decoded_data"), show="headings")
+        self.tree.heading("time", text="Время")
+        self.tree.heading("raw_data", text="Сырые данные")
+        self.tree.heading("decoded_data", text="Расшифрованные данные")
+        # Configure column widths
+        self.tree.column("time", width=100)
+        self.tree.column("raw_data", width=300)
+        self.tree.column("decoded_data", width=300)
+        # Add vertical scrollbar
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vsb.set)
+        # Grid layout
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        # Configure grid weights
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        # Add copy functionality
+        self.tree.bind('<Control-c>', self.copy_selection)
 
         # Text widget для вывода строковых сообщений
         message_frame = ttk.Frame(self.master)
@@ -192,13 +203,28 @@ class SerialMonitorGUI:
         else:
             self.skip_button.config(text="Пропускать запросы")
 
+    def copy_selection(self, event):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            return
+
+        copied_data = []
+        for item in selected_items:
+            values = self.tree.item(item)['values']
+            copied_data.append('\t'.join(str(v) for v in values))
+
+        copied_string = '\n'.join(copied_data)
+        self.master.clipboard_clear()
+        self.master.clipboard_append(copied_string)
+
     def clear_screen(self):
         self.counter_req = 0
         self.counter_ack = 0
         self.counter_search = 0
         self.counter_custom = 0
         self.update_counters()
-        self.text_area.delete(1.0, tk.END)
+        for item in self.tree.get_children():
+            self.tree.delete(item)
 
     def update_counters(self):
         self.counter_label1.config(text=f"IN: {self.counter_req}")
@@ -302,10 +328,21 @@ class SerialMonitorGUI:
                 self.close_port()
                 break
 
-
     def update_text_area(self, formatted_data):
-        self.text_area.insert(tk.END, formatted_data + "\n")
-        self.text_area.see(tk.END)  # Автоматическая прокрутка к концу
+        # Split the formatted data into time and data parts
+        parts = formatted_data.split(': ', 1)
+        if len(parts) == 2:
+            time = parts[0]
+            raw_data = parts[1].strip()
+            # Here you can add logic to decode/process the raw_data if needed
+            decoded_data = ""  # For now, just using the same data
+
+            # Insert at the beginning of the tree
+            self.tree.insert('', 0, values=(time, raw_data, decoded_data))
+
+            # Optional: limit the number of rows to prevent memory issues
+            if self.tree.get_children().__len__() > 1000:  # Keep last 1000 rows
+                self.tree.delete(self.tree.get_children()[-1])
 
 
     def start_reading(self):
