@@ -36,6 +36,8 @@ class SerialMonitorGUI:
         self.log_thread = None
         self.log_stop_event = threading.Event()
 
+        self.MAX_BUFFER_SIZE = 1024 * 1024  # 1 MB
+
         # Создание элементов интерфейса
         self.create_widgets()
 
@@ -182,11 +184,16 @@ class SerialMonitorGUI:
     def close_port(self):
         try:
             self.stop_event.set()  # Сигнализируем потоку о завершении
+            # Добавляем очистку буфера
+            self.data_buffer = ""
 
             if self.serial_thread and self.serial_thread.is_alive():
                 self.serial_thread.join(timeout=1.0)
 
             if self.ser and self.ser.is_open:
+                # Очищаем буферы порта перед закрытием
+                self.ser.reset_input_buffer()
+                self.ser.reset_output_buffer()
                 self.ser.close()
 
             self.open_button.config(text="Открыть порт", command=self.open_port)
@@ -277,8 +284,12 @@ class SerialMonitorGUI:
     def read_serial(self):
         while not self.stop_event.is_set():
             try:
-                if self.ser.in_waiting > 0:
+                if self.ser.in_waiting > 0 and not self.stop_event.is_set():  # Добавляем проверку флага
                     data = self.ser.read(self.ser.in_waiting)
+
+                    # Если порт закрывается, прекращаем обработку данных
+                    if self.stop_event.is_set():
+                        break
 
                     if self.encoding.get() == "O2":
                         # Добавляем новые данные в буфер
@@ -336,15 +347,20 @@ class SerialMonitorGUI:
                         except UnicodeDecodeError:
                             decoded_data = data.decode("latin-1", errors="ignore")
 
-
                     if self.encoding.get() != "O2":
                         timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
                         formatted_data = f"{timestamp}: {decoded_data}"
                         self.master.after(0, self.update_text_area, formatted_data)
 
+                    # Проверка размера буфера
+                    if len(self.data_buffer) > self.MAX_BUFFER_SIZE:
+                        self.data_buffer = self.data_buffer[-self.MAX_BUFFER_SIZE:]  # Оставляем только последнюю часть
+                        self.update_message_area("Предупреждение: буфер данных был очищен из-за превышения размера")
+
             except serial.SerialException as e:
-                self.update_message_area(f"Ошибка чтения данных: {e}")
-                self.close_port()
+                if not self.stop_event.is_set():  # Выводим ошибку только если это не закрытие порта
+                    self.update_message_area(f"Ошибка чтения данных: {e}")
+                    self.close_port()
                 break
 
     def update_text_area(self, formatted_data):
