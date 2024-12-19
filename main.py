@@ -1,10 +1,8 @@
-import re
 import tkinter as tk
 from tkinter import ttk
 import serial
 import threading
 import datetime
-import crcmod
 
 class SerialMonitorGUI:
     def __init__(self, master):
@@ -13,10 +11,10 @@ class SerialMonitorGUI:
 
         # Переменные для настроек COM-порта
         self.port = tk.StringVar(value="COM10")
-        self.baudrate = tk.IntVar(value=115200)
+        self.baud_rate = tk.IntVar(value=115200)
         self.databits = tk.IntVar(value=8)
         self.parity = tk.StringVar(value="N")
-        self.stopbits = tk.IntVar(value=1)
+        self.stop_bits = tk.IntVar(value=1)
         self.encoding = tk.StringVar(value="O2")
         self.skip_requests = True
 
@@ -52,16 +50,16 @@ class SerialMonitorGUI:
         ttk.Entry(settings_frame, textvariable=self.port, width=10).grid(row=0, column=1, padx=5)
 
         ttk.Label(settings_frame, text="Скорость:").grid(row=1, column=0, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.baudrate, width=10).grid(row=1, column=1, padx=5)
+        ttk.Entry(settings_frame, textvariable=self.baud_rate, width=10).grid(row=1, column=1, padx=5)
 
         ttk.Label(settings_frame, text="Биты данных:").grid(row=2, column=0, sticky="w")
-        ttk.Combobox(settings_frame, textvariable=self.databits, values=[5, 6, 7, 8], width=8).grid(row=2, column=1, padx=5)
+        ttk.Combobox(settings_frame, textvariable=self.databits, values=["5", "6", "7", "8"], width=8).grid(row=2, column=1, padx=5)
 
         ttk.Label(settings_frame, text="Четность:").grid(row=3, column=0, sticky="w")
         ttk.Combobox(settings_frame, textvariable=self.parity, values=["N", "E", "O", "M", "S"], width=8).grid(row=3, column=1, padx=5)
 
         ttk.Label(settings_frame, text="Стоп-биты:").grid(row=4, column=0, sticky="w")
-        ttk.Combobox(settings_frame, textvariable=self.stopbits, values=[1, 1.5, 2], width=8).grid(row=4, column=1, padx=5)
+        ttk.Combobox(settings_frame, textvariable=self.stop_bits, values=["1", "1.5", "2"], width=8).grid(row=4, column=1, padx=5)
 
         # Кнопка "Открыть порт"
         self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.open_port)
@@ -131,6 +129,16 @@ class SerialMonitorGUI:
 
         scrollbar.config(command=self.text_area.yview)
 
+        # Text widget для вывода строковых сообщений
+        message_frame = ttk.Frame(self.master)
+        message_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="nsew")
+        scrollbar_message = ttk.Scrollbar(message_frame)
+        scrollbar_message.pack(side=tk.RIGHT, fill=tk.Y)
+        self.message_area = tk.Text(message_frame, wrap=tk.WORD, height=5, yscrollcommand=scrollbar_message.set,
+                                    state=tk.DISABLED)
+        self.message_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar_message.config(command=self.message_area.yview)
+
         # Настройка динамического изменения размеров
         self.master.grid_rowconfigure(1, weight=1)
         self.master.grid_columnconfigure(0, weight=1)
@@ -145,17 +153,18 @@ class SerialMonitorGUI:
             # Открываем порт с заданными параметрами
             self.ser = serial.Serial(
                 port=self.port.get(),
-                baudrate=self.baudrate.get(),
+                baudrate=self.baud_rate.get(),
                 bytesize=self.databits.get(),
                 parity=self.parity.get(),
-                stopbits=self.stopbits.get(),
+                stopbits=self.stop_bits.get(),
                 timeout=0.01  # Timeout для чтения данных (1 секунда)
             )
 
             self.open_button.config(text="Закрыть порт", command=self.close_port)
             self.start_reading()
+            self.update_message_area(f"Порт {self.port.get()} открыт.")
         except serial.SerialException as e:
-            self.text_area.insert(tk.END, f"Ошибка открытия порта: {e}\n")
+            self.update_message_area(f"Ошибка открытия порта: {e}")
             return
 
     def close_port(self):
@@ -169,10 +178,10 @@ class SerialMonitorGUI:
                 self.ser.close()
 
             self.open_button.config(text="Открыть порт", command=self.open_port)
-            self.text_area.insert(tk.END, "Порт закрыт.\n")
+            self.update_message_area("Порт закрыт.")
 
         except Exception as e:
-            self.text_area.insert(tk.END, f"Ошибка закрытия порта: {e}\n")
+            self.update_message_area(f"Ошибка закрытия порта: {e}")
         finally:
             self.serial_thread = None  # Очищаем ссылку на поток
 
@@ -201,14 +210,20 @@ class SerialMonitorGUI:
         else:
             self.counter_label_custom.config(text="Свой шаблон: 0")
 
+    def update_message_area(self, message):
+        self.message_area.config(state=tk.NORMAL)  # Разрешаем редактирование
+        self.message_area.insert(tk.END, message + "\n")  # Добавляем сообщение
+        self.message_area.see(tk.END)  # Прокручиваем к последнему сообщению
+        self.message_area.config(state=tk.DISABLED)  # Запрещаем редактирование
+
     def save_log_to_file(self):
         try:
             # Открываем файл для записи
             with open("log.txt", "w", encoding="utf-8") as log_file:
                 log_file.write(self.text_area.get("1.0", tk.END))  # Сохраняем содержимое text_area
-            self.text_area.insert(tk.END, "Лог успешно сохранен в файл 'log.txt'.\n")
+            self.update_message_area("Лог успешно сохранен в файл 'log.txt'.")
         except Exception as e:
-            self.text_area.insert(tk.END, f"Ошибка при сохранении лога: {e}\n")
+            self.update_message_area(f"Ошибка при сохранении лога: {e}")
 
     def read_serial(self):
         while not self.stop_event.is_set():
@@ -283,7 +298,7 @@ class SerialMonitorGUI:
 
 
             except serial.SerialException as e:
-                self.master.after(0, self.update_text_area, f"Ошибка чтения данных: {e}\n")
+                self.update_message_area(f"Ошибка чтения данных: {e}")
                 self.close_port()
                 break
 
