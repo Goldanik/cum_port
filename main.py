@@ -4,12 +4,15 @@ from tkinter import ttk
 import serial
 import threading
 import datetime
+import queue
 
 class SerialMonitorGUI:
     def __init__(self, master):
         self.master = master
-        self.logger = FileLogger
         master.title("O2 Monitor")
+        self.log_queue = queue.Queue()  # Создаем очередь
+        self.logger = FileLogger.FileLogger()  # Создаем экземпляр
+        self.logger.log_queue = self.log_queue  # Передаем очередь логгеру
 
         # Переменные для настроек COM-порта
         self.port = tk.StringVar(value="COM10")
@@ -173,7 +176,7 @@ class SerialMonitorGUI:
 
             self.open_button.config(text="Закрыть порт", command=self.close_port)
             self.start_reading()
-            self.logger.FileLogger.start_log_thread(self.master)
+            self.logger.start_log_thread() # Запускаем поток логгера
             self.update_message_area(f"Порт {self.port.get()} открыт.")
         except serial.SerialException as e:
             self.update_message_area(f"Ошибка открытия порта: {e}")
@@ -196,7 +199,7 @@ class SerialMonitorGUI:
 
             self.open_button.config(text="Открыть порт", command=self.open_port)
             self.update_message_area("Порт закрыт.")
-            self.logger.FileLogger.stop_log_thread(self.master)
+            self.logger.stop_log_thread() # Останавливаем поток логгера
 
         except Exception as e:
             self.update_message_area(f"Ошибка закрытия порта: {e}")
@@ -364,7 +367,7 @@ class SerialMonitorGUI:
             if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
                 self.tree.delete(self.tree.get_children()[-1])
 
-            # Отправляем данные в очередь для записи в лог
+            # Отправляем данные в очередь для записи в лог через self.log_queue
             self.log_queue.put(f"{timestamp}\t{raw_data}\t{decoded_data}")
 
 
