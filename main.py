@@ -12,7 +12,7 @@ class SerialMonitorGUI:
         master.title("O2 Monitor")
         self.log_queue = queue.Queue()  # Создаем очередь
         self.logger = FileLogger.FileLogger()  # Создаем экземпляр
-        self.logger.log_queue = self.log_queue  # Передаем очередь логгеру
+        self.logger = FileLogger.FileLogger(log_queue=self.log_queue)
 
         # Переменные для настроек COM-порта
         self.port = tk.StringVar(value="COM10")
@@ -368,7 +368,10 @@ class SerialMonitorGUI:
                 self.tree.delete(self.tree.get_children()[-1])
 
             # Отправляем данные в очередь для записи в лог через self.log_queue
-            self.log_queue.put(f"{timestamp}\t{raw_data}\t{decoded_data}")
+            try:
+                self.log_queue.put_nowait(f"{timestamp}\t{raw_data}\t{decoded_data}")
+            except queue.Full:
+                self.master.after(0, self.update_message_area, "Очередь логов переполнена. Данные потеряны.")
 
 
     def start_reading(self):
