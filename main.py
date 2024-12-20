@@ -34,8 +34,6 @@ class SerialMonitorGUI:
         self.data_buffer = ""  # Буфер для накопления данных
 
         self.log_file = "log.txt"
-        self.log_thread = None
-        self.log_stop_event = threading.Event()
         self.log_queue = queue.Queue()  # Очередь для передачи данных в лог
         self.log_thread = None
         self.log_stop_event = threading.Event()
@@ -277,14 +275,6 @@ class SerialMonitorGUI:
                     log_file.write(data + "\n")
             except Exception as e:
                 self.update_message_area(f"Ошибка при записи лога: {e}")
-            time.sleep(1)  # Записываем лог каждую секунду
-
-    def write_log_to_file(self, log_data):  # Новая функция для записи в главном потоке
-        try:
-            with open(self.log_file, "w", encoding="utf-8") as log_file:
-                log_file.writelines(log_data) # Используем writelines для повышения эффективности
-        except Exception as e:
-            self.update_message_area(f"Ошибка при записи лога: {e}")
 
     def stop_log_thread(self):
         """Останавливаем поток записи лога"""
@@ -297,7 +287,12 @@ class SerialMonitorGUI:
         while not self.stop_event.is_set():
             try:
                 if self.ser.in_waiting > 0 and not self.stop_event.is_set():  # Добавляем проверку флага
-                    data = self.ser.read(self.ser.in_waiting)
+                    try:
+                        data = self.ser.read(self.ser.in_waiting)
+                    except serial.SerialException as e:
+                        if not self.stop_event.is_set():
+                            self.update_message_area(f"Ошибка чтения данных: {e}")
+                            self.close_port()
 
                     # Если порт закрывается, прекращаем обработку данных
                     if self.stop_event.is_set():
@@ -335,12 +330,14 @@ class SerialMonitorGUI:
                                     self.counter_search += 1
 
                                 custom_pattern = self.custom_skip_pattern.get().lower()
-                                if custom_pattern:
+                                if custom_pattern: # and all(c in "0123456789abcdef"for c in custom_pattern):
                                     try:
                                         self.counter_custom += packet.count(custom_pattern)
                                         packet = packet.replace(custom_pattern, "")
                                     except Exception as e:
                                         self.update_message_area(f"Ошибка обработки пользовательского шаблона: {e}")
+                                # else:
+                                #     self.update_message_area("Некорректный пользовательский шаблон")
 
                                 packet = packet.replace(self.req_pattern1, "")
                                 packet = packet.replace(self.ack_pattern1, "")
