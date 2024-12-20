@@ -2,3 +2,4 @@
 log.txt
 dist/main.exe
 build/
+__pycache__/

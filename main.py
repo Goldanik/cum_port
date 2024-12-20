@@ -1,14 +1,14 @@
-import queue
+import FileLogger
 import tkinter as tk
 from tkinter import ttk
 import serial
 import threading
 import datetime
-import time
 
 class SerialMonitorGUI:
     def __init__(self, master):
         self.master = master
+        self.logger = FileLogger
         master.title("O2 Monitor")
 
         # Переменные для настроек COM-порта
@@ -32,11 +32,6 @@ class SerialMonitorGUI:
         self.counter_custom = 0  # Счетчик для пользовательского шаблона
 
         self.data_buffer = ""  # Буфер для накопления данных
-
-        self.log_file = "log.txt"
-        self.log_queue = queue.Queue()  # Очередь для передачи данных в лог
-        self.log_thread = None
-        self.log_stop_event = threading.Event()
 
         self.MAX_BUFFER_SIZE = 1024 * 1024  # 1 MB
         self.MAX_TABLE_SIZE = 10000
@@ -178,7 +173,7 @@ class SerialMonitorGUI:
 
             self.open_button.config(text="Закрыть порт", command=self.close_port)
             self.start_reading()
-            self.start_log_thread()
+            self.logger.FileLogger.start_log_thread(self.master)
             self.update_message_area(f"Порт {self.port.get()} открыт.")
         except serial.SerialException as e:
             self.update_message_area(f"Ошибка открытия порта: {e}")
@@ -201,7 +196,7 @@ class SerialMonitorGUI:
 
             self.open_button.config(text="Открыть порт", command=self.open_port)
             self.update_message_area("Порт закрыт.")
-            self.stop_log_thread()
+            self.logger.FileLogger.stop_log_thread(self.master)
 
         except Exception as e:
             self.update_message_area(f"Ошибка закрытия порта: {e}")
@@ -253,34 +248,6 @@ class SerialMonitorGUI:
         self.message_area.insert(tk.END, message + "\n")  # Добавляем сообщение
         self.message_area.see(tk.END)  # Прокручиваем к последнему сообщению
         self.message_area.config(state=tk.DISABLED)  # Запрещаем редактирование
-
-    def start_log_thread(self):
-        """Запускаем поток для записи лога"""
-        self.log_stop_event.clear()
-        self.log_thread = threading.Thread(target=self.log_data_to_file, daemon=True)
-        self.log_thread.start()
-
-    def log_data_to_file(self):
-        """Фоновый поток для записи лога"""
-        while not self.log_stop_event.is_set():
-            try:
-                # Пытаемся получить данные из очереди
-                try:
-                    data = self.log_queue.get(timeout=1)  # Ждем максимум 1 секунду
-                except queue.Empty:
-                    continue  # Если нет данных, продолжаем ожидание
-
-                # Пишем данные в файл
-                with open(self.log_file, "a", encoding="utf-8", buffering=1) as log_file:
-                    log_file.write(data + "\n")
-            except Exception as e:
-                self.update_message_area(f"Ошибка при записи лога: {e}")
-
-    def stop_log_thread(self):
-        """Останавливаем поток записи лога"""
-        self.log_stop_event.set()
-        if self.log_thread and self.log_thread.is_alive():
-            self.log_thread.join(timeout=1.0)
 
     def read_serial(self):
         """Чтение данных из порта"""
@@ -372,7 +339,6 @@ class SerialMonitorGUI:
                     if len(self.data_buffer) > self.MAX_BUFFER_SIZE:
                         processed_data = self.data_buffer[:self.MAX_BUFFER_SIZE]
                         self.data_buffer = self.data_buffer[self.MAX_BUFFER_SIZE:]
-                        self.process_data(processed_data)
                         self.update_message_area("Предупреждение: буфер данных был очищен из-за превышения размера")
             except serial.SerialException as e:
                 if not self.stop_event.is_set():  # Выводим ошибку только если это не закрытие порта
