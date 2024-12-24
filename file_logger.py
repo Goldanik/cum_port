@@ -19,11 +19,11 @@ class FileLogger:
             with open(self.log_file, "a", encoding="utf-8", buffering=1):
                 pass  # Проверяем, что файл доступен для записи
         except Exception as e:
-            self.main_gui.master.after(0, self.main_gui.update_message_area, f"Ошибка открытия файла лога: {e}")
+            self.main_gui.update_message_area(f"Ошибка открытия файла лога: {e}")
             return
         # Проверяем что поток был остановлен перед повторным открытием
         if self.log_thread and self.log_thread.is_alive():
-            self.main_gui.master.after(0, self.main_gui.update_message_area, "Поток записи уже запущен.")
+            self.main_gui.update_message_area("Поток записи уже запущен.")
             return
 
         self.log_stop_event.clear()
@@ -53,4 +53,4 @@ class FileLogger:
                 with open(self.log_file, "a", encoding="utf-8", buffering=2) as log_file:
                     log_file.write(data + "\n")
             except Exception as e:
-                self.main_gui.master.after(0, self.main_gui.update_message_area, f"Ошибка записи лога: {e}")  # Вызов в главном потоке
+                self.main_gui.update_message_area(f"Ошибка записи лога: {e}")

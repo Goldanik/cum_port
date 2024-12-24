@@ -1,12 +1,11 @@
-import file_logger
-import data_processing
 import tkinter as tk
 from tkinter import ttk
 import serial
-import threading
-import datetime
 import queue
+# Свои реализации
 import serial_port
+import file_logger
+import data_processing
 
 class SerialMonitorGUI:
     def __init__(self, gui, logger_queue, data_proc_queue):
@@ -222,10 +221,10 @@ class SerialMonitorGUI:
 
     # Кнопка очистки окна вывода
     def clear_screen(self):
-        self.counter_req = 0
-        self.counter_ack = 0
-        self.counter_search = 0
-        self.counter_custom = 0
+        self.data_proc.counter_req = 0
+        self.data_proc.counter_ack = 0
+        self.data_proc.counter_search = 0
+        self.data_proc.counter_custom = 0
         self.update_counters()
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -240,12 +239,12 @@ class SerialMonitorGUI:
 
     # Обновление счетчиков для пропускаемых пакетов
     def update_counters(self):
-        self.counter_label1.config(text=f"IN: {self.counter_req}")
-        self.counter_label2.config(text=f"ACK: {self.counter_ack}")
-        self.counter_label3.config(text=f"SEARCH: {self.counter_search}")
+        self.counter_label1.config(text=f"IN: {self.data_proc.counter_req}")
+        self.counter_label2.config(text=f"ACK: {self.data_proc.counter_ack}")
+        self.counter_label3.config(text=f"SEARCH: {self.data_proc.counter_search}")
         custom_pattern = self.custom_skip_pattern.get()
         if custom_pattern:
-            self.counter_label_custom.config(text=f"Свой шаблон ({custom_pattern}): {self.counter_custom}")
+            self.counter_label_custom.config(text=f"Свой шаблон ({custom_pattern}): {self.data_proc.counter_custom}")
         else:
             self.counter_label_custom.config(text="Свой шаблон: 0")
 

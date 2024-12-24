@@ -1,7 +1,6 @@
 import datetime
 import queue
 import threading
-import tkinter as tk
 
 class DataProcessing:
     def __init__(self, data_proc_queue, logger_queue, main_gui):
@@ -66,7 +65,7 @@ class DataProcessing:
                     decoded_data = current_buffer.decode("latin-1", errors="ignore")
             if encoding != "O2":
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                self.logger_queue.put(f"{timestamp}^ {decoded_data}")
+                self.logger_queue.put(f"{timestamp}^ {decoded_data}^ \n")
 
     def orion2_parser(self, data):
         """Парсер для кодировки Orion2."""
@@ -106,8 +105,7 @@ class DataProcessing:
                         self.counter_custom += packet.count(custom_pattern)
                         packet = packet.replace(custom_pattern, "")
                     except Exception as e:
-                        self.main_gui.after(0, self.main_gui.update_message_area,
-                                          f"Ошибка обработки пользовательского шаблона: {e}")
+                        self.main_gui.update_message_area(f"Ошибка обработки пользовательского шаблона: {e}")
                 # else:
                 #     self.update_message_area("Некорректный пользовательский шаблон")
 
