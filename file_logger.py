@@ -12,7 +12,7 @@ class FileLogger:
         # Интерфейс пользователя
         self.main_gui = main_gui
 
-    def start_log_thread(self):
+    def start_logger(self):
         """Запускаем поток для записи лога"""
         # Проверяем что файл можно открыть
         try:
@@ -30,7 +30,7 @@ class FileLogger:
         self.log_thread = threading.Thread(target=self.log_data_to_file, daemon=True)
         self.log_thread.start()
 
-    def stop_log_thread(self):
+    def stop_logger(self):
         """Останавливаем поток записи лога"""
         self.log_stop_event.set()
         if self.log_thread and self.log_thread.is_alive():

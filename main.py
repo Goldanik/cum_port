@@ -9,7 +9,7 @@ import queue
 import serial_port
 
 class SerialMonitorGUI:
-    def __init__(self, gui, logger_queue):
+    def __init__(self, gui, logger_queue, data_proc_queue):
 
         self.skip_button = None
         self.clear_button = None
@@ -26,6 +26,11 @@ class SerialMonitorGUI:
         self.encoding = None
 
         self.log_queue = logger_queue
+        self.data_queue = data_proc_queue
+        # Передаем тот же экземпляр GUI в другие компоненты
+        self.serial_port = serial_port.SerialPort(data_proc_queue=data_queue, main_gui=self)
+        self.data_proc = data_processing.DataProcessing(data_proc_queue=data_queue, logger_queue=log_queue, main_gui=self)
+        self.file_logger = file_logger.FileLogger(log_queue=log_queue, main_gui=self)
 
         # Переменные для настроек COM-порта
         self.port = tk.StringVar(value="COM10")
@@ -37,6 +42,9 @@ class SerialMonitorGUI:
 
         self.gui = gui
         gui.title("O2 Monitor")
+
+        # Пользовательский шаблон
+        self.custom_skip_pattern = tk.StringVar(value="")
 
         self.skip_requests = True
 
@@ -68,7 +76,7 @@ class SerialMonitorGUI:
         ttk.Combobox(settings_frame, textvariable=self.stop_bits, values=["1", "1.5", "2"], width=8).grid(row=4, column=1, padx=5)
 
         # Кнопка "Открыть порт"
-        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.open_port)
+        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.attempt_open_port)
         self.open_button.grid(row=5, column=0, pady=(5, 0))
 
         # Clear Screen button
@@ -87,9 +95,9 @@ class SerialMonitorGUI:
         self.custom_pattern_frame = ttk.Frame(self.counter_frame)
         self.custom_pattern_frame.grid(row=4, column=0, padx=5, pady=2, sticky="w")
 
-        #ttk.Label(self.custom_pattern_frame, text="Свой шаблон:").grid(row=0, column=0, padx=(0, 5))
-        #self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern, width=10)
-        #self.custom_pattern_entry.grid(row=0, column=1)
+        ttk.Label(self.custom_pattern_frame, text="Свой шаблон:").grid(row=0, column=0, padx=(0, 5))
+        self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern, width=10)
+        self.custom_pattern_entry.grid(row=0, column=1)
 
         self.counter_label1 = ttk.Label(self.counter_frame, text="IN: 0")
         self.counter_label1.grid(row=0, column=0, padx=5, pady=2, sticky="w")
@@ -161,13 +169,13 @@ class SerialMonitorGUI:
         self.gui.grid_columnconfigure(0, weight=1)
 
     # Открытие последовательного порта
-    def open_port(self):
+    def attempt_open_port(self):
         try:
             # Закрываем порт, если он уже открыт
-            if self.ser and self.ser.is_open:
-                self.close_port
+            if self.serial_port.ser and self.serial_port.ser.is_open:
+                self.serial_port.close_port()
             # Открываем порт с заданными параметрами
-            self.ser = serial.Serial(
+            self.serial_port.open_port(
                 port=self.port.get(),
                 baudrate=self.baud_rate.get(),
                 bytesize=self.databits.get(),
@@ -176,18 +184,26 @@ class SerialMonitorGUI:
                 timeout=0.01  # Timeout для чтения данных (1 секунда)
             )
 
-            self.maingui.config(text="Закрыть порт", command=self.close_port)
-            # Запуск потока чтения из последовательного порта
-            self.stop_event.clear()  # Сбрасываем флаг остановки
-            self.serial_thread = threading.Thread(target=self.read_serial, daemon=True)
-            self.serial_thread.start()
-            self.data.start_data_processing()
-            # Запускаем поток логгера
-            self.logger.start_log_thread()
+            self.open_button.config(text="Закрыть порт", command=self.attempt_close_port)
+            # Запускаем поток обработчика
+            self.data_proc.start_data_processing()
+            # Запускаем поток логера
+            self.file_logger.start_logger()
             self.update_message_area(f"Порт {self.port.get()} открыт.")
         except serial.SerialException as e:
             self.update_message_area(f"Ошибка открытия порта: {e}")
             return
+
+    # Закрытие последовательного порта
+    def attempt_close_port(self):
+        try:
+            self.serial_port.close_port()
+            self.data_proc.stop_data_processing()
+            self.file_logger.stop_logger()
+            self.open_button.config(text="Открыть порт", command=self.attempt_open_port)
+            self.update_message_area("Порт закрыт.")
+        except Exception as e:
+            self.update_message_area(f"Ошибка закрытия порта: {e}")
 
     # Функционал копирования строк из окна вывода
     def copy_selection(self, event):
@@ -278,10 +294,6 @@ data_queue = queue.Queue()
 # Создаем главное окно
 main = tk.Tk()
 # Создаем один экземпляр GUI
-app = SerialMonitorGUI(main, logger_queue=log_queue)
-# Передаем тот же экземпляр GUI в другие компоненты
-port = serial_port.SerialPort(data_proc_queue=data_queue, main_gui=app)
-data = data_processing.DataProcessing(data_proc_queue=data_queue, logger_queue=log_queue, main_gui=app)
-log = file_logger.FileLogger(log_queue=log_queue, main_gui=app)
+app = SerialMonitorGUI(main, logger_queue=log_queue, data_proc_queue=data_queue)
 # Запускаем главный цикл
 main.mainloop()

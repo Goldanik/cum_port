@@ -19,8 +19,6 @@ class DataProcessing:
         # Паттерны ориона2
         self.req_ack_pattern1 = "ff011f6c" + "6f6c"
         self.req_ack_pattern2 = "ff021f48" + "6f1d"
-        # Пользовательский шаблон
-        self.custom_skip_pattern = tk.StringVar(master=self.main_gui.gui, value="")
 
         # Счетчики
         self.counter_req = 0
@@ -102,14 +100,14 @@ class DataProcessing:
                 if next_ff == 14:
                     self.counter_search += 1
 
-                # custom_pattern = self.custom_skip_pattern.get().lower()
-                # if custom_pattern and all(c in "0123456789abcdef"for c in custom_pattern):
-                #     try:
-                #         self.counter_custom += packet.count(custom_pattern)
-                #         packet = packet.replace(custom_pattern, "")
-                #     except Exception as e:
-                #         self.master.after(0, self.update_message_area,
-                #                           f"Ошибка обработки пользовательского шаблона: {e}")
+                custom_pattern = self.main_gui.custom_skip_pattern.get().lower()
+                if custom_pattern: # and all(c in "0123456789abcdef"for c in custom_pattern):
+                    try:
+                        self.counter_custom += packet.count(custom_pattern)
+                        packet = packet.replace(custom_pattern, "")
+                    except Exception as e:
+                        self.main_gui.after(0, self.main_gui.update_message_area,
+                                          f"Ошибка обработки пользовательского шаблона: {e}")
                 # else:
                 #     self.update_message_area("Некорректный пользовательский шаблон")
 

@@ -24,14 +24,11 @@ class SerialPort:
         self.main_gui = main_gui
 
     # Открытие последовательного порта
-    def open_port(self,port,baud_rate,databits,parity,stop_bits):
+    def open_port(self,port,baudrate,bytesize,parity,stopbits,timeout):
         try:
             # Открываем порт с заданными параметрами
-            self.ser = serial.Serial(port,baud_rate,databits,parity,stop_bits,
-                timeout=0.01  # Timeout для чтения данных (1 секунда)
-            )
+            self.ser = serial.Serial(port,baudrate,bytesize,parity,stopbits,timeout)
 
-            self.main_gui.config(text="Закрыть порт", command=self.close_port)
             # Запуск потока чтения из последовательного порта
             self.close_port_event.clear()  # Сбрасываем флаг остановки
             self.serial_thread = threading.Thread(target=self.read_serial, daemon=True)
