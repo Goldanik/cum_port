@@ -33,11 +33,10 @@ class FileLogger:
     def stop_logger(self):
         """Останавливаем поток записи лога"""
         self.log_stop_event.set()
+
         if self.log_thread and self.log_thread.is_alive():
             self.log_thread.join(timeout=1.0)
-        # Ожидаем завершения потока
-        if self.log_thread and self.log_thread.is_alive():
-            self.log_thread.join()
+
 
     def log_data_to_file(self):
         """Фоновый поток для записи лога"""
@@ -49,8 +48,10 @@ class FileLogger:
                 continue # Если нет данных, продолжаем ожидание
 
             try:
-                # Пишем данные в файл
-                with open(self.log_file, "a", encoding="utf-8", buffering=2) as log_file:
-                    log_file.write(data + "\n")
+                # Пишем данные в файл, по окончанию записи сам закроется из-за with
+                with open(self.log_file, "w+", encoding="utf-8", buffering=2) as log_file:
+                    log_file.write(data)
             except Exception as e:
                 self.main_gui.update_message_area(f"Ошибка записи лога: {e}")
+
+            self.main_gui.update_text_area(data)

@@ -9,21 +9,20 @@ import data_processing
 
 class SerialMonitorGUI:
     def __init__(self, gui, logger_queue, data_proc_queue):
-
+        # Кнопки
         self.skip_button = None
+        self.skip_requests = True
         self.clear_button = None
         self.open_button = None
-
+        # Прочая
         self.custom_pattern_entry = None
         self.custom_pattern_frame = None
         self.counter_frame = None
         self.message_area = None
         self.tree = None
-
-        self.open_port = None
-
         self.encoding = None
 
+        # Присваиваем себе экземпляр очереди
         self.log_queue = logger_queue
         self.data_queue = data_proc_queue
         # Передаем тот же экземпляр GUI в другие компоненты
@@ -39,16 +38,16 @@ class SerialMonitorGUI:
         self.stop_bits = tk.IntVar(value=1)
         self.encoding = tk.StringVar(value="O2")
 
+        # Присваиваем себе функционал ткинтера
         self.gui = gui
         gui.title("O2 Monitor")
 
-        # Пользовательский шаблон
+        # Пользовательский шаблон для парсера
         self.custom_skip_pattern = tk.StringVar(value="")
 
-        self.skip_requests = True
-
-        self.MAX_BUFFER_SIZE = 1024 * 1024  # 1 MB
+        # Размер таблицы на экране
         self.MAX_TABLE_SIZE = 10000
+
         # Создание элементов интерфейса
         self.create_widgets()
 
@@ -188,7 +187,16 @@ class SerialMonitorGUI:
             self.data_proc.start_data_processing()
             # Запускаем поток логера
             self.file_logger.start_logger()
+
             self.update_message_area(f"Порт {self.port.get()} открыт.")
+            # while self.serial_port.ser.is_open:
+            #     # Читаем данные из файла
+            #     try:
+            #         with open(self.file_logger.log_file, "rt", encoding="utf-8") as log_file:
+            #             data = log_file.readline()
+            #             self.update_text_area(data)
+            #     except Exception as e:
+            #         self.update_message_area(f"Ошибка чтения лога: {e}")
         except serial.SerialException as e:
             self.update_message_area(f"Ошибка открытия порта: {e}")
             return
@@ -263,7 +271,7 @@ class SerialMonitorGUI:
     def update_text_area(self, formatted_data):
         """Обновление данных в дереве и отправка их в очередь для записи в лог"""
         # Разделяем данные на время и содержимое
-        parts = formatted_data.split('^ ', 1)
+        parts = formatted_data.split('  ', 1)
         if len(parts) == 2:
             timestamp = parts[0]
             raw_data = parts[1]
@@ -272,19 +280,11 @@ class SerialMonitorGUI:
             decoded_data = ""  # Оставляем пустым для примера
 
             # Обновляем дерево (GUI) из главного потока
-            self.gui.after(0, lambda: self.tree.insert('', 0, values=(timestamp, raw_data, decoded_data)))
+            self.tree.insert('', 0, values=(timestamp, raw_data, decoded_data))
 
             # Ограничиваем количество строк в дереве
             if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
                 self.tree.delete(self.tree.get_children()[-1])
-
-            # Передаем форматированные данные в очередь логера
-            try:
-                self.log_queue.put_nowait(f"{timestamp}\t{raw_data}\t{decoded_data}")
-            except LookupError:  # Обработка неизвестной кодировки
-                self.update_message_area(f"Ошибка: неизвестная кодировка {self.encoding.get()}")
-            except queue.Full:
-                self.update_message_area("Очередь логов переполнена. Данные потеряны.")
 
 # Очередь логера
 log_queue = queue.Queue()

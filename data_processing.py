@@ -65,7 +65,7 @@ class DataProcessing:
                     decoded_data = current_buffer.decode("latin-1", errors="ignore")
             if encoding != "O2":
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                self.logger_queue.put(f"{timestamp}^ {decoded_data}^ \n")
+                self.logger_queue.put(f"{timestamp}  {decoded_data}  ")
 
     def orion2_parser(self, data):
         """Парсер для кодировки Orion2."""
@@ -117,5 +117,4 @@ class DataProcessing:
                 self.main_gui.update_counters()
             if packet:
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                formatted_data = f"{timestamp}^ {packet}"
-                self.logger_queue.put(formatted_data)
+                self.logger_queue.put(f"{timestamp}  {packet}  ")
