@@ -51,7 +51,6 @@ class DataProcessing:
                 continue  # Если нет данных, продолжаем ожидание
             self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
             # Значение по умолчанию
-            decoded_data = ""
             encoding = self.main_gui.encoding.get()
             if encoding == "O2":
                 # Передаем данные напрямую в парсер
@@ -75,6 +74,8 @@ class DataProcessing:
                     if packet:
                         try:
                             self.logger_queue.put(f"{self.timestamp}  {packet}  ")
+                            # Обновляем GUI
+                            self.main_gui.update_text_area(f"{self.timestamp}  {packet}  ")
                         except queue.Full:
                             self.main_gui.update_message_area(f"Очередь заполнена")
             elif encoding == "BIN":
@@ -96,6 +97,8 @@ class DataProcessing:
                     if packet:
                         try:
                             self.logger_queue.put(f"{self.timestamp}  {packet}  ")
+                            # Обновляем GUI
+                            self.main_gui.update_text_area(f"{self.timestamp}  {packet}  ")
                         except queue.Full:
                             self.main_gui.update_message_area(f"Очередь заполнена")
             elif encoding == "ASCII":
@@ -125,6 +128,8 @@ class DataProcessing:
                         if packet:
                             try:
                                 self.logger_queue.put(f"{self.timestamp}  {packet}  ")
+                                # Обновляем GUI
+                                self.main_gui.update_text_area(f"{self.timestamp}  {packet}  ")
                             except queue.Full:
                                 self.main_gui.update_message_area(f"Очередь заполнена")
                 except UnicodeDecodeError:
@@ -182,6 +187,8 @@ class DataProcessing:
             if packet:
                 try:
                     self.logger_queue.put(f"{self.timestamp}  {packet}  ")
+                    # Обновляем GUI
+                    self.main_gui.update_text_area(f"{self.timestamp}  {packet}  ")
                     #self.main_gui.update_message_area(f"Размер очереди2: {self.logger_queue.qsize()}")
                 except queue.Full:
                     self.main_gui.update_message_area(f"Очередь заполнена")

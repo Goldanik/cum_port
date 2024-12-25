@@ -26,9 +26,11 @@ class SerialPort:
     # Открытие последовательного порта
     def open_port(self,port,baudrate,bytesize,parity,stopbits,timeout):
         try:
+            # Закрываем старый порт если он есть
+            if self.ser and self.ser.is_open:
+                self.ser.close()
             # Открываем порт с заданными параметрами
             self.ser = serial.Serial(port,baudrate,bytesize,parity,stopbits,timeout)
-
             # Запуск потока чтения из последовательного порта
             self.close_port_event.clear()  # Сбрасываем флаг остановки
             self.serial_thread = threading.Thread(target=self.read_serial, daemon=True)
@@ -50,6 +52,7 @@ class SerialPort:
                 # Очищаем буферы порта перед закрытием
                 self.ser.reset_input_buffer()
                 self.ser.reset_output_buffer()
+                self.data_queue.queue.clear()
                 self.ser.close()
         except Exception as e:
             self.main_gui.update_message_area(f"Ошибка закрытия порта: {e}")

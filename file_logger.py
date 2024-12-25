@@ -45,14 +45,14 @@ class FileLogger:
         if self.log_thread and self.log_thread.is_alive():
             self.log_thread.join(timeout=1.0)
 
+        self.log_queue.queue.clear()
+
     def log_data_to_file(self):
         """Фоновый поток для записи лога"""
         while not self.log_stop_event.is_set():
             try:
                 # Пытаемся получить данные из очереди
                 data = self.log_queue.get(timeout=1)
-                # Обновляем GUI
-                self.main_gui.update_text_area(data)
                 # Добавляем данные в буфер
                 self.buffer.append(data + "\n")
                 # Проверяем размер буфера

@@ -172,6 +172,8 @@ class SerialMonitorGUI:
             # Закрываем порт, если он уже открыт
             if self.serial_port.ser and self.serial_port.ser.is_open:
                 self.serial_port.close_port()
+                self.data_proc.stop_data_processing()
+                self.file_logger.stop_logger()
             # Открываем порт с заданными параметрами
             self.serial_port.open_port(
                 port=self.port.get(),
