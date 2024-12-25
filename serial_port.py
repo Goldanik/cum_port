@@ -64,7 +64,7 @@ class SerialPort:
             try:
                 try:
                     # Получение всех байтов из очереди входящих и складывание в очередь данных
-                    data = self.ser.read(self.ser.in_waiting)
+                    data = self.ser.read(4)
                     try:
                         self.data_queue.put(data)
                     except queue.Full:

@@ -97,10 +97,10 @@ class SerialMonitorGUI:
         self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern, width=10)
         self.custom_pattern_entry.grid(row=0, column=1)
 
-        self.counter_label1 = ttk.Label(self.counter_frame, text="IN: 0")
+        self.counter_label1 = ttk.Label(self.counter_frame, text="REQ/ACK 1: 0")
         self.counter_label1.grid(row=0, column=0, padx=5, pady=2, sticky="w")
 
-        self.counter_label2 = ttk.Label(self.counter_frame, text="ACK: 0")
+        self.counter_label2 = ttk.Label(self.counter_frame, text="REQ/ACK 2: 0")
         self.counter_label2.grid(row=1, column=0, padx=5, pady=2, sticky="w")
 
         self.counter_label3 = ttk.Label(self.counter_frame, text="SEARCH: 0")
@@ -182,13 +182,13 @@ class SerialMonitorGUI:
                 timeout=0.01  # Timeout для чтения данных (1 секунда)
             )
 
-            self.open_button.config(text="Закрыть порт", command=self.attempt_close_port)
-            # Запускаем поток обработчика
-            self.data_proc.start_data_processing()
-            # Запускаем поток логера
-            self.file_logger.start_logger()
-
-            self.update_message_area(f"Порт {self.port.get()} открыт.")
+            if self.serial_port.ser.is_open:
+                self.open_button.config(text="Закрыть порт", command=self.attempt_close_port)
+                # Запускаем поток обработчика
+                self.data_proc.start_data_processing()
+                # Запускаем поток логера
+                self.file_logger.start_logger()
+                self.update_message_area(f"Порт {self.port.get()} открыт.")
             # while self.serial_port.ser.is_open:
             #     # Читаем данные из файла
             #     try:
@@ -247,8 +247,8 @@ class SerialMonitorGUI:
 
     # Обновление счетчиков для пропускаемых пакетов
     def update_counters(self):
-        self.counter_label1.config(text=f"IN: {self.data_proc.counter_req}")
-        self.counter_label2.config(text=f"ACK: {self.data_proc.counter_ack}")
+        self.counter_label1.config(text=f"REQ/ACK 1: {self.data_proc.counter_req_ack1}")
+        self.counter_label2.config(text=f"REQ/ACK 2: {self.data_proc.counter_req_ack2}")
         self.counter_label3.config(text=f"SEARCH: {self.data_proc.counter_search}")
         custom_pattern = self.custom_skip_pattern.get()
         if custom_pattern:

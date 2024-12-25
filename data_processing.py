@@ -20,10 +20,12 @@ class DataProcessing:
         self.req_ack_pattern2 = "ff021f48" + "6f1d"
 
         # Счетчики
-        self.counter_req = 0
-        self.counter_ack = 0
+        self.counter_req_ack1 = 0
+        self.counter_req_ack2 = 0
         self.counter_search = 0
         self.counter_custom = 0
+
+        self.timestamp = ""
 
     def start_data_processing(self):
         # Запускаем отдельный поток для обработки данных
@@ -45,6 +47,7 @@ class DataProcessing:
             try:
                 # Пытаемся получить данные из очереди
                 current_buffer = self.data_proc_queue.get(timeout=1)
+                self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
             except queue.Empty:
                 continue  # Если нет данных, продолжаем ожидание
 
@@ -61,11 +64,29 @@ class DataProcessing:
             elif encoding == "ASCII":
                 try:
                     decoded_data = current_buffer.decode("ascii", errors="ignore")
+                    while decoded_data and not self.data_process_event.is_set():
+                        end = decoded_data.find('\n', 0)
+                        if end == -1:
+                            additional_buffer = self.data_proc_queue.get(timeout=1)
+                            decoded_data += additional_buffer.decode("ascii", errors="ignore")
+                            packet = ""
+                            self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                        else:
+                            # Берём данные до следующего маркера
+                            packet = decoded_data[:end]
+                            decoded_data = decoded_data[end:]
+                        if packet:
+                            try:
+                                self.logger_queue.put(f"{self.timestamp}  {packet}  ")
+                            except queue.Full:
+                                self.main_gui.update_message_area(f"Очередь заполнена")
                 except UnicodeDecodeError:
                     decoded_data = current_buffer.decode("latin-1", errors="ignore")
-            if encoding != "O2":
-                timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                self.logger_queue.put(f"{timestamp}  {decoded_data}  ")
+            if encoding != "O2" and decoded_data:
+                try:
+                    self.logger_queue.put(f"{self.timestamp}  {decoded_data}  ")
+                except queue.Full:
+                    self.main_gui.update_message_area(f"Очередь заполнена")
 
     def orion2_parser(self, data):
         """Парсер для кодировки Orion2."""
@@ -78,9 +99,11 @@ class DataProcessing:
                 try:
                     # Пытаемся получить данные из очереди
                     additional_buffer = self.data_proc_queue.get(timeout=1)
+                    self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
                 except queue.Empty:
                     continue  # Если нет данных, продолжаем ожидание
                 data += additional_buffer.hex()
+                packet = ""
             elif next_ff % 2 != 0:
                 # Если длина в битах нечетная, вероятно пакет разбит не правильно (например из-за F на конце пакета)
                 # в этом случае дополняем пакет до четного размера и парсинг следующего начинаем со следующего элемента
@@ -93,11 +116,16 @@ class DataProcessing:
 
             if self.main_gui.skip_requests:
                 # Подсчёт и удаление шаблонов из целого пакета
-                self.counter_req += packet.count(self.req_ack_pattern1)
-                self.counter_ack += packet.count(self.req_ack_pattern2)
+                if packet == self.req_ack_pattern1:
+                    self.counter_req_ack1 += 1
+                    packet = ""
+                if packet == self.req_ack_pattern2:
+                    self.counter_req_ack2 += 1
+                    packet = ""
                 # Временный функционал подсчета пакетов SEARCH известной длины
                 if next_ff == 14:
                     self.counter_search += 1
+                    packet = ""
 
                 custom_pattern = self.main_gui.custom_skip_pattern.get().lower()
                 if custom_pattern: # and all(c in "0123456789abcdef"for c in custom_pattern):
@@ -109,12 +137,9 @@ class DataProcessing:
                 # else:
                 #     self.update_message_area("Некорректный пользовательский шаблон")
 
-                packet = packet.replace(self.req_ack_pattern1, "")
-                packet = packet.replace(self.req_ack_pattern2, "")
-                # Временный функционал отрезки пакетов SEARCH известной длины
-                if next_ff == 14:
-                    packet = ""
                 self.main_gui.update_counters()
             if packet:
-                timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                self.logger_queue.put(f"{timestamp}  {packet}  ")
+                try:
+                    self.logger_queue.put(f"{self.timestamp}  {packet}  ")
+                except queue.Full:
+                    self.main_gui.update_message_area(f"Очередь заполнена")
