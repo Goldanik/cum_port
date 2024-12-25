@@ -41,6 +41,11 @@ class SerialMonitorGUI:
         # Присваиваем себе функционал ткинтера
         self.gui = gui
         gui.title("O2 Monitor")
+        gui.geometry("860x600")
+        # Очередь для элементов GUI
+        self.gui_queue = queue.Queue()
+        # Обновляем GUI по таймеру
+        self.gui.after(100, self.process_gui_queue)
 
         # Пользовательский шаблон для парсера
         self.custom_skip_pattern = tk.StringVar(value="")
@@ -53,11 +58,15 @@ class SerialMonitorGUI:
 
     # Создание графического окна
     def create_widgets(self):
-         # Frame для настроек COM-порта
-        settings_frame = ttk.LabelFrame(self.gui, text="Настройки COM-порта")
-        settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        main_frame = ttk.Frame(self.gui)
+         # Рамка для настроек COM-порта
+        settings_frame = ttk.LabelFrame(main_frame, text="Настройки COM-порта")
+        settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nw")
+        main_frame.pack()
 
-        # Labels и Entry для параметров
+
+
+        # Имена и поля ввода для параметров
         ttk.Label(settings_frame, text="Порт:").grid(row=0, column=0, sticky="w")
         ttk.Entry(settings_frame, textvariable=self.port, width=10).grid(row=0, column=1, padx=5)
 
@@ -77,24 +86,24 @@ class SerialMonitorGUI:
         self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.attempt_open_port)
         self.open_button.grid(row=5, column=0, pady=(5, 0))
 
-        # Clear Screen button
+        # Кнопка "Очистить экран"
         self.clear_button = ttk.Button(settings_frame, text="Очистить экран", command=self.clear_screen)
         self.clear_button.grid(row=6, column=0, pady=(5, 0))
 
-        # Add O2 settings
-        o2_frame = ttk.LabelFrame(self.gui, text="Функции Орион 2")
-        o2_frame.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+        # Рамка "Функции Орион 2"
+        o2_frame = ttk.LabelFrame(main_frame, text="Функции Орион 2")
+        o2_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nw")
 
-        # Сounters display
+        # Рамка "Счетчики пропущенных запросов"
         self.counter_frame = ttk.LabelFrame(o2_frame, text="Счетчики пропущенных запросов")
         self.counter_frame.grid(row=7, column=0, pady=(5, 0), sticky="w")
 
-        # В counter_frame добавим поле для пользовательского шаблона
+        # Поле для пользовательского шаблона
         self.custom_pattern_frame = ttk.Frame(self.counter_frame)
         self.custom_pattern_frame.grid(row=4, column=0, padx=5, pady=2, sticky="w")
 
         ttk.Label(self.custom_pattern_frame, text="Свой шаблон:").grid(row=0, column=0, padx=(0, 5))
-        self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern, width=10)
+        self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern, width=20)
         self.custom_pattern_entry.grid(row=0, column=1)
 
         self.counter_label1 = ttk.Label(self.counter_frame, text="REQ/ACK 1: 0")
@@ -107,24 +116,26 @@ class SerialMonitorGUI:
         self.counter_label3.grid(row=2, column=0, padx=5, pady=2, sticky="w")
 
         # Добавим счетчик для пользовательского шаблона
-        self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон: 0")
+        self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон: не задан")
         self.counter_label_custom.grid(row=3, column=0, padx=5, pady=2, sticky="w")
 
-        ttk.Radiobutton(o2_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0,
-                                                                                             sticky="w")
+         # Кнопка "Кодировка О2"
+        ttk.Radiobutton(o2_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0, sticky="w")
+
         # Кнопка "Пропускать запросы"
         self.skip_button = ttk.Button(o2_frame, text="Включен пропуск запросов", command=self.toggle_skip_requests)
-        self.skip_button.grid(row=6, column=0, columnspan=2, pady=(5, 0))
+        self.skip_button.grid(row=6, column=0, columnspan=2, pady=(5, 0),sticky="nw")
 
         # Настройки кодировки
-        encoding_frame = ttk.LabelFrame(self.gui, text="Кодировка")
-        encoding_frame.grid(row=0, column=2, padx=10, pady=10, sticky="w")
+        encoding_frame = ttk.LabelFrame(main_frame, text="Кодировка")
+        encoding_frame.grid(row=0, column=2, padx=10, pady=10, sticky="nw")
 
+        # Кнопки выбора кодировок
         ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX").grid(row=1, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="BIN", variable=self.encoding, value="BIN").grid(row=2, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII").grid(row=3, column=0, sticky="w")
 
-        tree_frame = ttk.Frame(self.gui)
+        tree_frame = ttk.Frame(main_frame)
         tree_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="nsew")
 
         # Create Treeview
@@ -154,7 +165,7 @@ class SerialMonitorGUI:
         self.tree.bind('<Control-c>', self.copy_selection)
 
         # Text widget для вывода строковых сообщений
-        message_frame = ttk.Frame(self.gui)
+        message_frame = ttk.Frame(main_frame)
         message_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="nsew")
         scrollbar_message = ttk.Scrollbar(message_frame)
         scrollbar_message.pack(side=tk.RIGHT, fill=tk.Y)
@@ -260,6 +271,9 @@ class SerialMonitorGUI:
 
     # Обновление информационной строки
     def update_message_area(self, message):
+        self.gui_queue.put(('message', message))
+
+    def _update_message_area(self, message):
         # Разрешаем редактирование
         self.message_area.config(state=tk.NORMAL)
         # Добавляем сообщение
@@ -271,6 +285,9 @@ class SerialMonitorGUI:
 
     # Обновление окна вывода
     def update_text_area(self, formatted_data):
+        self.gui_queue.put(('text', formatted_data))
+
+    def _update_text_area(self, formatted_data):
         """Обновление данных в дереве и отправка их в очередь для записи в лог"""
         # Разделяем данные на время и содержимое
         parts = formatted_data.split('  ', 1)
@@ -287,6 +304,15 @@ class SerialMonitorGUI:
             # Ограничиваем количество строк в дереве
             if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
                 self.tree.delete(self.tree.get_children()[-1])
+
+    def process_gui_queue(self):
+        while not self.gui_queue.empty():
+            type, data = self.gui_queue.get()
+            if type == 'message':
+                self._update_message_area(data)
+            elif type == 'text':
+                self._update_text_area(data)
+        self.gui.after(100, self.process_gui_queue)
 
 # Очередь логера
 log_queue = queue.Queue()
