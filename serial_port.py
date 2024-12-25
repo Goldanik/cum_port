@@ -64,11 +64,12 @@ class SerialPort:
             try:
                 try:
                     # Получение всех байтов из очереди входящих и складывание в очередь данных
-                    data = self.ser.read(4)
+                    data = self.ser.read(self.ser.in_waiting or 1)
                     try:
                         self.data_queue.put(data)
                     except queue.Full:
                         self.main_gui.update_message_area("Очередь порта переполнена. Данные потеряны.")
+                    #self.main_gui.update_message_area(f"Размер очереди1: {self.data_queue.qsize()}")
                 except serial.SerialException as e:
                     # Выходим из цикла чтения, если порт еще не закрыт
                     if not self.close_port_event.is_set():

@@ -46,7 +46,7 @@ class SerialMonitorGUI:
         self.custom_skip_pattern = tk.StringVar(value="")
 
         # Размер таблицы на экране
-        self.MAX_TABLE_SIZE = 10000
+        self.MAX_TABLE_SIZE = 50000
 
         # Создание элементов интерфейса
         self.create_widgets()
@@ -280,8 +280,8 @@ class SerialMonitorGUI:
             decoded_data = ""  # Оставляем пустым для примера
 
             # Обновляем дерево (GUI) из главного потока
-            self.tree.insert('', 0, values=(timestamp, raw_data, decoded_data))
-
+            self.tree.insert('', 'end', values=(timestamp, raw_data, decoded_data))
+            self.tree.yview_moveto(1)
             # Ограничиваем количество строк в дереве
             if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
                 self.tree.delete(self.tree.get_children()[-1])
