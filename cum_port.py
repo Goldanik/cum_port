@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import serial
+import serial.tools.list_ports
 import queue
 
 # Свои реализации
@@ -11,11 +12,13 @@ import data_processing
 class SerialMonitorGUI:
     def __init__(self, gui, logger_queue, data_proc_queue):
         # Кнопки
+        self.refresh_ports_button = None
         self.skip_button = None
         self.skip_requests = True
         self.clear_button = None
         self.open_button = None
         # Прочая
+        self.port_combobox = None
         self.custom_pattern_entry = None
         self.custom_pattern_frame = None
         self.counter_frame = None
@@ -32,12 +35,16 @@ class SerialMonitorGUI:
         self.file_logger = file_logger.FileLogger(log_queue=log_queue, main_gui=self)
 
         # Переменные для настроек COM-порта
-        self.port = tk.StringVar(value="COM10")
+        self.port = tk.StringVar()
         self.baud_rate = tk.IntVar(value=115200)
         self.databits = tk.IntVar(value=8)
         self.parity = tk.StringVar(value="N")
         self.stop_bits = tk.IntVar(value=1)
         self.encoding = tk.StringVar(value="O2")
+        # Устанавливаем первый порт как текущий
+        available_ports = self.get_available_ports()
+        if available_ports:
+            self.port.set(available_ports[0])
 
         # Присваиваем себе функционал ткинтера
         self.gui = gui
@@ -74,10 +81,17 @@ class SerialMonitorGUI:
 
         # Имена и поля ввода для параметров
         ttk.Label(settings_frame, text="Порт:").grid(row=0, column=0, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.port, width=10).grid(row=0, column=1, padx=5)
+        self.port_combobox = ttk.Combobox(settings_frame, textvariable=self.port, width=8)
+        self.port_combobox.grid(row=0, column=1, padx=5)
+        self.port_combobox['values'] = self.get_available_ports()  # Устанавливаем список портов
+        self.port_combobox.state(['readonly'])  # Только выбор из списка
+
+        # Кнопка обновить список портов
+        self.refresh_ports_button = ttk.Button(settings_frame, text=u'\u21bb', command=self.refresh_ports, width=4)
+        self.refresh_ports_button.grid(row=0, column=2, padx=5)
 
         ttk.Label(settings_frame, text="Скорость:").grid(row=1, column=0, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.baud_rate, width=10).grid(row=1, column=1, padx=5)
+        ttk.Combobox(settings_frame, textvariable=self.baud_rate, values=["115200", "57600", "38400", "19200", "9600"], width=8).grid(row=1, column=1, padx=5)
 
         ttk.Label(settings_frame, text="Биты данных:").grid(row=2, column=0, sticky="w")
         ttk.Combobox(settings_frame, textvariable=self.databits, values=["5", "6", "7", "8"], width=8).grid(row=2, column=1, padx=5)
@@ -90,11 +104,15 @@ class SerialMonitorGUI:
 
         # Кнопка "Открыть порт"
         self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.attempt_open_port)
-        self.open_button.grid(row=5, column=0, pady=(5, 0))
+        self.open_button.grid(row=5, column=0, columnspan=2, pady=5, sticky="we")
 
         # Кнопка "Очистить экран"
         self.clear_button = ttk.Button(settings_frame, text="Очистить экран", command=self.clear_screen)
-        self.clear_button.grid(row=6, column=0, pady=(5, 0))
+        self.clear_button.grid(row=6, column=0, columnspan=2, pady=5, sticky="we")
+
+        settings_frame.grid_columnconfigure(0, weight=3, minsize=30)
+        settings_frame.grid_columnconfigure(1, weight=2, minsize=20)
+        settings_frame.grid_columnconfigure(2, weight=1, minsize=10)
 
         # Рамка "Функции Орион 2"
         o2_frame = ttk.LabelFrame(fixed_frame, text="Функции Орион 2")
@@ -241,6 +259,20 @@ class SerialMonitorGUI:
         except Exception as e:
             self.update_message_area(f"Ошибка закрытия порта: {e}")
 
+    def get_available_ports(self):
+        """Возвращает список доступных COM-портов."""
+        ports = serial.tools.list_ports.comports()
+        return [port.device for port in ports]
+
+    def refresh_ports(self):
+        """Обновляет список доступных COM-портов."""
+        available_ports = self.get_available_ports()
+        self.port_combobox['values'] = available_ports
+        if available_ports:
+            self.port_combobox.current(0)  # Устанавливаем первый порт как выбранный
+        else:
+            self.port.set("")  # Если портов нет, сбрасываем значение
+
     # Функционал копирования строк из окна вывода
     def copy_selection(self, event):
         selected_items = self.tree.selection()
@@ -344,6 +376,35 @@ class SerialMonitorGUI:
         # Повторный вызов через 100 мс
         self.gui.after(100, self.process_gui_queue)
 
+    def calc_crc7(self, old_crc, in_byte):
+        temp = 0
+        in_byte ^= old_crc
+
+        if in_byte & 0x01:
+            temp ^= 0x49
+        if in_byte & 0x02:
+            temp ^= 0x25
+        if in_byte & 0x04:
+            temp ^= 0x4A
+        if in_byte & 0x08:
+            temp ^= 0x23
+        if in_byte & 0x10:
+            temp ^= 0x46
+        if in_byte & 0x20:
+            temp ^= 0x3B
+        if in_byte & 0x40:
+            temp ^= 0x76
+        if in_byte & 0x80:
+            temp ^= 0x5B
+
+        return temp
+
+    def calculate_crc7(self, data):
+        crc7 = 0xFF
+        for byte in data:
+            crc7 = self.calc_crc7(crc7, byte)
+        return crc7
+
 # Очередь логера
 log_queue = queue.Queue()
 # Очередь данных последовательного порта
@@ -352,5 +413,8 @@ data_queue = queue.Queue()
 main = tk.Tk()
 # Создаем один экземпляр GUI
 app = SerialMonitorGUI(main, logger_queue=log_queue, data_proc_queue=data_queue)
+# data = [0x01, 0x1f]  # Пример массива данных
+# crc7_result = app.calculate_crc7(data)
+# print(f"CRC7: {crc7_result:#04x}")
 # Запускаем главный цикл
 main.mainloop()

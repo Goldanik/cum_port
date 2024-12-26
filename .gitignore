@@ -1,5 +1,6 @@
 ﻿main.spec
-log.txt
-dist/main.exe
+.txt
+dist/
 build/
 __pycache__/
+.idea/

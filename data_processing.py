@@ -173,13 +173,13 @@ class DataProcessing:
                     self.counter_search += 1
                     packet = ""
 
-                # custom_pattern = self.main_gui.custom_skip_pattern.get().lower()
-                # if custom_pattern: # and all(c in "0123456789abcdef"for c in custom_pattern):
-                #     try:
-                #         self.counter_custom += packet.count(custom_pattern)
-                #         packet = packet.replace(custom_pattern, "")
-                #     except Exception as e:
-                #         self.main_gui.update_message_area(f"Ошибка обработки пользовательского шаблона: {e}")
+                custom_pattern = self.main_gui.custom_skip_pattern.get().lower()
+                if custom_pattern: # and all(c in "0123456789abcdef"for c in custom_pattern):
+                    try:
+                        self.counter_custom += packet.count(custom_pattern)
+                        packet = packet.replace(custom_pattern, "")
+                    except Exception as e:
+                        self.main_gui.update_message_area(f"Ошибка обработки пользовательского шаблона: {e}")
                 # else:
                 #     self.update_message_area("Некорректный пользовательский шаблон")
 
