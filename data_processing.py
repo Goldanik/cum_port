@@ -16,13 +16,10 @@ class DataProcessing:
         self.main_gui = main_gui
 
         # Паттерны ориона2
-        self.req_ack_pattern1 = "ff011f6c" + "6f6c"
-        self.req_ack_pattern2 = "ff021f48" + "6f1d"
+        # self.req_ack_pattern1 = "ff011f6c" + "6f6c"
+        # self.req_ack_pattern2 = "ff021f48" + "6f1d"
 
         # Счетчики
-        self.counter_req_ack1 = 0
-        self.counter_req_ack2 = 0
-        self.counter_search = 0
         self.counter_custom = 0
 
         self.unparsed_encoding_data_size = 150
@@ -160,17 +157,23 @@ class DataProcessing:
                 packet = data[:next_ff]
                 data = data[next_ff:]
 
-            if self.main_gui.skip_requests:
-                # Подсчёт и удаление шаблонов из целого пакета
-                if packet == self.req_ack_pattern1:
-                    self.counter_req_ack1 += 1
+            if self.main_gui.skip_requests and len(packet) > 4:
+                temp_packet = packet[4:]
+                # Подсчёт пакетов IN для каждого адреса
+                if temp_packet.startswith('1f'):
+                    address = int(packet[2:4])
+                    self.main_gui.req_ack_counters[int(address)] += 1
                     packet = ""
-                if packet == self.req_ack_pattern2:
-                    self.counter_req_ack2 += 1
+                # Подсчёт пакетов SEARCH для каждого адреса
+                elif temp_packet.startswith('8f'):
+                    address = int(packet[2:4])
+                    self.main_gui.search_counters[int(address)] += 1
                     packet = ""
-                # Временный функционал подсчета пакетов SEARCH известной длины
-                if next_ff == 14:
-                    self.counter_search += 1
+                # Подсчёт пакетов GETID для каждого адреса
+                elif temp_packet.startswith('af'):
+                    address = int(packet[2:4], 16) & 0x1F
+                    if address < 33:
+                        self.main_gui.getid_counters[address] += 1
                     packet = ""
 
                 custom_pattern = self.main_gui.custom_skip_pattern.get().lower()
@@ -183,7 +186,6 @@ class DataProcessing:
                 # else:
                 #     self.update_message_area("Некорректный пользовательский шаблон")
 
-                self.main_gui.update_counters()
             if packet:
                 try:
                     self.logger_queue.put(f"{self.timestamp}  {packet}  ")

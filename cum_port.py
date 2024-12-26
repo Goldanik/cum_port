@@ -18,6 +18,7 @@ class SerialMonitorGUI:
         self.clear_button = None
         self.open_button = None
         # Прочая
+        self.counter_table = None
         self.port_combobox = None
         self.custom_pattern_entry = None
         self.custom_pattern_frame = None
@@ -25,6 +26,11 @@ class SerialMonitorGUI:
         self.message_area = None
         self.tree = None
         self.encoding = None
+
+        # Инициализация массивов счетчиков
+        self.req_ack_counters = [0] * 32  # Счетчики REQ/ACK для каждого адреса
+        self.search_counters = [0] * 32  # Счетчики SEARCH для каждого адреса
+        self.getid_counters = [0] * 32  # Счетчики GETID для каждого адреса
 
         # Присваиваем себе экземпляр очереди
         self.log_queue = logger_queue
@@ -49,12 +55,12 @@ class SerialMonitorGUI:
         # Присваиваем себе функционал ткинтера
         self.gui = gui
         self.gui.title("CUM_port ver.beta.1")
-        self.gui.geometry("900x600")
-        self.gui.minsize(900,600)
+        self.gui.geometry("1000x700")
+        self.gui.minsize(1000,700)
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
         # Обновляем GUI по таймеру
-        self.gui.after(100, self.process_gui_queue)
+        self.gui.after(200, self.process_gui_queue)
 
         # Пользовательский шаблон для парсера
         self.custom_skip_pattern = tk.StringVar(value="")
@@ -77,7 +83,7 @@ class SerialMonitorGUI:
 
         # Рамка для настроек COM-порта
         settings_frame = ttk.LabelFrame(fixed_frame, text="Настройки COM-порта")
-        settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nw")
+        settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nwe")
 
         # Имена и поля ввода для параметров
         ttk.Label(settings_frame, text="Порт:").grid(row=0, column=0, sticky="w")
@@ -104,19 +110,15 @@ class SerialMonitorGUI:
 
         # Кнопка "Открыть порт"
         self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.attempt_open_port)
-        self.open_button.grid(row=5, column=0, columnspan=2, pady=5, sticky="we")
+        self.open_button.grid(row=5, column=0, columnspan=3, pady=5, sticky="we")
 
         # Кнопка "Очистить экран"
         self.clear_button = ttk.Button(settings_frame, text="Очистить экран", command=self.clear_screen)
-        self.clear_button.grid(row=6, column=0, columnspan=2, pady=5, sticky="we")
-
-        settings_frame.grid_columnconfigure(0, weight=3, minsize=30)
-        settings_frame.grid_columnconfigure(1, weight=2, minsize=20)
-        settings_frame.grid_columnconfigure(2, weight=1, minsize=10)
+        self.clear_button.grid(row=6, column=0, columnspan=3, pady=5, sticky="we")
 
         # Рамка "Функции Орион 2"
         o2_frame = ttk.LabelFrame(fixed_frame, text="Функции Орион 2")
-        o2_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nw")
+        o2_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nw")
 
         # Рамка "Счетчики пропущенных запросов"
         self.counter_frame = ttk.LabelFrame(o2_frame, text="Счетчики пропущенных запросов")
@@ -130,14 +132,28 @@ class SerialMonitorGUI:
         self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern, width=20)
         self.custom_pattern_entry.grid(row=0, column=1)
 
-        self.counter_label1 = ttk.Label(self.counter_frame, text="REQ/ACK 1: 0")
-        self.counter_label1.grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        # Создаем таблицу для отображения данных
+        self.counter_table = ttk.Treeview(self.counter_frame, columns=("address", "req_ack", "search", "getid"), show="headings", height=10)
+        self.counter_table.heading("address", text="№")
+        self.counter_table.heading("req_ack", text="IN/ACK")
+        self.counter_table.heading("search", text="SEARCH")
+        self.counter_table.heading("getid", text="GETID")
 
-        self.counter_label2 = ttk.Label(self.counter_frame, text="REQ/ACK 2: 0")
-        self.counter_label2.grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        # Устанавливаем ширину колонок
+        self.counter_table.column("address", width=25, anchor="center")
+        self.counter_table.column("req_ack", width=50, anchor="center")
+        self.counter_table.column("search", width=50, anchor="center")
+        self.counter_table.column("getid", width=50, anchor="center")
 
-        self.counter_label3 = ttk.Label(self.counter_frame, text="SEARCH: 0")
-        self.counter_label3.grid(row=2, column=0, padx=5, pady=2, sticky="w")
+        # Добавляем вертикальный скроллбар
+        scrollbar = ttk.Scrollbar(self.counter_frame, orient="vertical", command=self.counter_table.yview)
+        self.counter_table.configure(yscrollcommand=scrollbar.set)
+        self.counter_table.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Инициализируем данные таблицы
+        for i in range(33):
+            self.counter_table.insert("", "end", values=(i, 0, 0, 0))
 
         # Добавим счетчик для пользовательского шаблона
         self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон: не задан")
@@ -149,7 +165,7 @@ class SerialMonitorGUI:
 
         # Настройки кодировки
         encoding_frame = ttk.LabelFrame(fixed_frame, text="Кодировка")
-        encoding_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nw")
+        encoding_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nw")
 
         # Кнопки выбора кодировок
         ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0, sticky="w")
@@ -290,9 +306,10 @@ class SerialMonitorGUI:
 
     # Кнопка очистки окна вывода
     def clear_screen(self):
-        self.data_proc.counter_req = 0
-        self.data_proc.counter_ack = 0
-        self.data_proc.counter_search = 0
+        # Сбрасываем счетчики в списках (инициализируем заново)
+        self.req_ack_counters = [0] * 32
+        self.search_counters = [0] * 32
+        self.getid_counters = [0] * 32
         self.data_proc.counter_custom = 0
         self.update_counters()
         for item in self.tree.get_children():
@@ -308,14 +325,16 @@ class SerialMonitorGUI:
 
     # Обновление счетчиков для пропускаемых пакетов
     def update_counters(self):
-        self.counter_label1.config(text=f"REQ/ACK 1: {self.data_proc.counter_req_ack1}")
-        self.counter_label2.config(text=f"REQ/ACK 2: {self.data_proc.counter_req_ack2}")
-        self.counter_label3.config(text=f"SEARCH: {self.data_proc.counter_search}")
-        custom_pattern = self.custom_skip_pattern.get()
-        if custom_pattern:
-            self.counter_label_custom.config(text=f"Свой шаблон ({custom_pattern}): {self.data_proc.counter_custom}")
-        else:
-            self.counter_label_custom.config(text="Свой шаблон: 0")
+        """Обновление данных в таблице счетчиков."""
+        # Обновляем данные в строках таблицы
+        for i in range(32):
+            # Получаем текущие значения счетчиков REQ/ACK и SEARCH для каждого адреса
+            req_ack_count = self.req_ack_counters[i]  # Массив счетчиков REQ/ACK
+            search_count = self.search_counters[i]  # Массив счетчиков SEARCH
+            getid_count = self.getid_counters[i]  # Массив счетчиков GETID
+
+            # Обновляем соответствующую строку в таблице
+            self.counter_table.item(self.counter_table.get_children()[i], values=(i, req_ack_count, search_count, getid_count))
 
     # Обновление информационной строки
     def update_message_area(self, message):
@@ -373,8 +392,9 @@ class SerialMonitorGUI:
             for text_data in accumulated_text_data:
                 self._update_text_area(text_data)
         #self._update_message_area(f"Размер очереди гуи: {self.data_queue.qsize()}")
+        self.update_counters()
         # Повторный вызов через 100 мс
-        self.gui.after(100, self.process_gui_queue)
+        self.gui.after(200, self.process_gui_queue)
 
     def calc_crc7(self, old_crc, in_byte):
         temp = 0
