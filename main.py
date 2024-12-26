@@ -41,7 +41,7 @@ class SerialMonitorGUI:
         # Присваиваем себе функционал ткинтера
         self.gui = gui
         gui.title("O2 Monitor")
-        gui.geometry("860x600")
+        gui.geometry("800x600")
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
         # Обновляем GUI по таймеру
@@ -300,18 +300,32 @@ class SerialMonitorGUI:
 
             # Обновляем дерево (GUI) из главного потока
             self.tree.insert('', 'end', values=(timestamp, raw_data, decoded_data))
+            # Опускаем скроллбар вниз
             self.tree.yview_moveto(1)
-            # Ограничиваем количество строк в дереве
+            # Ограничиваем количество строк в дереве удаляя старые
             if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
-                self.tree.delete(self.tree.get_children()[-1])
+                self.tree.delete(self.tree.get_children()[0])
 
     def process_gui_queue(self):
+        # Добавляем временный буфер для накопления данных
+        accumulated_text_data = []
+        accumulated_message_data = []
+
         while not self.gui_queue.empty():
             type, data = self.gui_queue.get()
             if type == 'message':
-                self._update_message_area(data)
+                accumulated_message_data.append(data)
             elif type == 'text':
-                self._update_text_area(data)
+                accumulated_text_data.append(data)
+
+        # Обновляем GUI с накопленными данными
+        if accumulated_message_data:
+            self._update_message_area("\n".join(accumulated_message_data))
+        if accumulated_text_data:
+            for text_data in accumulated_text_data:
+                self._update_text_area(text_data)
+
+        # Повторный вызов через 100 мс
         self.gui.after(100, self.process_gui_queue)
 
 # Очередь логера
