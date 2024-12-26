@@ -30,7 +30,8 @@ class SerialMonitorGUI:
         # Инициализация массивов счетчиков
         self.req_ack_counters = [0] * 32  # Счетчики REQ/ACK для каждого адреса
         self.search_counters = [0] * 32  # Счетчики SEARCH для каждого адреса
-        self.getid_counters = [0] * 32  # Счетчики GETID для каждого адреса
+        self.get_id_counters = [0] * 32  # Счетчики GETID для каждого адреса
+        self.give_addr = [0] * 32  # Счетчики GIVEADDR для каждого адреса
 
         # Присваиваем себе экземпляр очереди
         self.log_queue = logger_queue
@@ -133,17 +134,19 @@ class SerialMonitorGUI:
         self.custom_pattern_entry.grid(row=0, column=1)
 
         # Создаем таблицу для отображения данных
-        self.counter_table = ttk.Treeview(self.counter_frame, columns=("address", "req_ack", "search", "getid"), show="headings", height=10)
+        self.counter_table = ttk.Treeview(self.counter_frame, columns=("address", "req_ack", "search", "get_id", "give_addr"), show="headings", height=10)
         self.counter_table.heading("address", text="№")
         self.counter_table.heading("req_ack", text="IN/ACK")
         self.counter_table.heading("search", text="SEARCH")
-        self.counter_table.heading("getid", text="GETID")
+        self.counter_table.heading("get_id", text="GETID")
+        self.counter_table.heading("give_addr", text="GIVEADDR")
 
         # Устанавливаем ширину колонок
         self.counter_table.column("address", width=25, anchor="center")
         self.counter_table.column("req_ack", width=50, anchor="center")
         self.counter_table.column("search", width=50, anchor="center")
-        self.counter_table.column("getid", width=50, anchor="center")
+        self.counter_table.column("get_id", width=50, anchor="center")
+        self.counter_table.column("give_addr", width=50, anchor="center")
 
         # Добавляем вертикальный скроллбар
         scrollbar = ttk.Scrollbar(self.counter_frame, orient="vertical", command=self.counter_table.yview)
@@ -309,7 +312,8 @@ class SerialMonitorGUI:
         # Сбрасываем счетчики в списках (инициализируем заново)
         self.req_ack_counters = [0] * 32
         self.search_counters = [0] * 32
-        self.getid_counters = [0] * 32
+        self.get_id_counters = [0] * 32
+        self.give_addr = [0] * 32
         self.data_proc.counter_custom = 0
         self.update_counters()
         for item in self.tree.get_children():
@@ -331,10 +335,11 @@ class SerialMonitorGUI:
             # Получаем текущие значения счетчиков REQ/ACK и SEARCH для каждого адреса
             req_ack_count = self.req_ack_counters[i]  # Массив счетчиков REQ/ACK
             search_count = self.search_counters[i]  # Массив счетчиков SEARCH
-            getid_count = self.getid_counters[i]  # Массив счетчиков GETID
+            getid_count = self.get_id_counters[i]  # Массив счетчиков GETID
+            give_addr = self.give_addr[i]  # Массив адресов GIVEADDR
 
             # Обновляем соответствующую строку в таблице
-            self.counter_table.item(self.counter_table.get_children()[i], values=(i, req_ack_count, search_count, getid_count))
+            self.counter_table.item(self.counter_table.get_children()[i], values=(i, req_ack_count, search_count, getid_count, give_addr))
 
     # Обновление информационной строки
     def update_message_area(self, message):

@@ -51,7 +51,7 @@ class DataProcessing:
             encoding = self.main_gui.encoding.get()
             if encoding == "O2":
                 # Передаем данные напрямую в парсер
-                self.orion2_parser(current_buffer.hex())
+                self.orion2_parser(current_buffer)
             elif encoding == "HEX":
                 decoded_data = current_buffer.hex()
                 while decoded_data and not self.data_process_event.is_set():
@@ -132,49 +132,52 @@ class DataProcessing:
                 except UnicodeDecodeError:
                     decoded_data = current_buffer.decode("latin-1", errors="ignore")
 
-    def orion2_parser(self, data):
+    def orion2_parser(self, data_bytes):
         """Парсер для кодировки Orion2."""
-        while data and not self.data_process_event.is_set():
+        while data_bytes and not self.data_process_event.is_set():
             # Ищем 'ff'
-            next_ff = data.find('ff', 2 if len(data) > 2 else 0)
+            next_ff = data_bytes.find(b"\xFF", 2 if len(data_bytes) > 2 else 0)
             #self.main_gui.update_message_area(f"Данные на парсинг: {len(data)}, {data}, {next_ff}")
             if next_ff == -1 or next_ff == 0:
                 try:
                     # Пытаемся получить данные из очереди
                     additional_buffer = self.data_proc_queue.get(timeout=1)
-                    self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
                 except queue.Empty:
                     continue  # Если нет данных, продолжаем ожидание
-                data += additional_buffer.hex()
+                data_bytes += additional_buffer
                 continue
-            elif next_ff % 2 != 0:
-                # Если длина в битах нечетная, вероятно пакет разбит не правильно (например из-за F на конце пакета)
-                # в этом случае дополняем пакет до четного размера и парсинг следующего начинаем со следующего элемента
-                packet = data[:next_ff + 1]
-                data = data[next_ff + 1:]
             else:
                 # Берём данные до следующего маркера
-                packet = data[:next_ff]
-                data = data[next_ff:]
+                packet = data_bytes[:next_ff].hex()
+                data_bytes = data_bytes[next_ff:]
+                self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
 
-            if self.main_gui.skip_requests and len(packet) > 4:
+            if self.main_gui.skip_requests and (len(packet) > 4) and packet.startswith('ff'):
                 temp_packet = packet[4:]
                 # Подсчёт пакетов IN для каждого адреса
                 if temp_packet.startswith('1f'):
-                    address = int(packet[2:4])
+                    address = int(packet[2:4], 16) & 0x1F
                     self.main_gui.req_ack_counters[int(address)] += 1
                     packet = ""
                 # Подсчёт пакетов SEARCH для каждого адреса
                 elif temp_packet.startswith('8f'):
-                    address = int(packet[2:4])
+                    address = int(packet[2:4], 16) & 0x1F
                     self.main_gui.search_counters[int(address)] += 1
                     packet = ""
                 # Подсчёт пакетов GETID для каждого адреса
                 elif temp_packet.startswith('af'):
                     address = int(packet[2:4], 16) & 0x1F
                     if address < 33:
-                        self.main_gui.getid_counters[address] += 1
+                        self.main_gui.get_id_counters[address] += 1
                     packet = ""
+
+                if packet:
+                    temp_packet = packet[2:]
+                    if temp_packet.startswith('80') and temp_packet.find('9f') == 14:
+                        address = int(packet[22:24])
+                        self.main_gui.give_addr[address] = (temp_packet[12:14]+":"+temp_packet[10:12]+":"+temp_packet[8:10]
+                              +":"+temp_packet[6:8]+":"+temp_packet[4:6]+":"+temp_packet[2:4])
+                        packet = ""
 
                 custom_pattern = self.main_gui.custom_skip_pattern.get().lower()
                 if custom_pattern: # and all(c in "0123456789abcdef"for c in custom_pattern):
