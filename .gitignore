@@ -1,5 +1,5 @@
 ﻿main.spec
-.txt
+logs/
 dist/
 build/
 __pycache__/

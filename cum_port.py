@@ -56,8 +56,8 @@ class SerialMonitorGUI:
         # Присваиваем себе функционал ткинтера
         self.gui = gui
         self.gui.title("CUM_port ver.beta.1")
-        self.gui.geometry("1000x700")
-        self.gui.minsize(1000,700)
+        self.gui.geometry("1024x768")
+        self.gui.minsize(1024,768)
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
         # Обновляем GUI по таймеру
@@ -75,11 +75,11 @@ class SerialMonitorGUI:
     # Создание графического окна
     def create_widgets(self):
         # Создаем два фрейма: для фиксированного и растягивающегося содержимого
-        fixed_frame = tk.Frame(self.gui, bg="gray", width=200)
-        stretchable_frame = tk.Frame(self.gui, bg="white")
+        fixed_frame = tk.Frame(self.gui, bg="gray")
+        fixed_frame.grid_columnconfigure(0, minsize=350)
 
-        # Размещаем фреймы в основной сетке
         fixed_frame.grid(row=0, column=0, sticky="nsew")
+        stretchable_frame = tk.Frame(self.gui, bg="white")
         stretchable_frame.grid(row=0, column=1, sticky="nsew")
 
         # Рамка для настроек COM-порта
@@ -119,11 +119,11 @@ class SerialMonitorGUI:
 
         # Рамка "Функции Орион 2"
         o2_frame = ttk.LabelFrame(fixed_frame, text="Функции Орион 2")
-        o2_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nw")
+        o2_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nwe")
 
         # Рамка "Счетчики пропущенных запросов"
         self.counter_frame = ttk.LabelFrame(o2_frame, text="Счетчики пропущенных запросов")
-        self.counter_frame.grid(row=7, column=0, pady=(5, 0), sticky="w")
+        self.counter_frame.grid(row=7, column=0, pady=5, sticky="nwe")
 
         # Поле для пользовательского шаблона
         self.custom_pattern_frame = ttk.Frame(self.counter_frame)
@@ -136,17 +136,17 @@ class SerialMonitorGUI:
         # Создаем таблицу для отображения данных
         self.counter_table = ttk.Treeview(self.counter_frame, columns=("address", "req_ack", "search", "get_id", "give_addr"), show="headings", height=10)
         self.counter_table.heading("address", text="№")
-        self.counter_table.heading("req_ack", text="IN/ACK")
+        self.counter_table.heading("req_ack", text="IN/NACK")
         self.counter_table.heading("search", text="SEARCH")
         self.counter_table.heading("get_id", text="GETID")
         self.counter_table.heading("give_addr", text="GIVEADDR")
 
         # Устанавливаем ширину колонок
-        self.counter_table.column("address", width=25, anchor="center")
-        self.counter_table.column("req_ack", width=50, anchor="center")
-        self.counter_table.column("search", width=50, anchor="center")
-        self.counter_table.column("get_id", width=50, anchor="center")
-        self.counter_table.column("give_addr", width=50, anchor="center")
+        self.counter_table.column("address", width=30, anchor="center")
+        self.counter_table.column("req_ack", width=60, anchor="center")
+        self.counter_table.column("search", width=60, anchor="center")
+        self.counter_table.column("get_id", width=60, anchor="center")
+        self.counter_table.column("give_addr", width=100, anchor="center")
 
         # Добавляем вертикальный скроллбар
         scrollbar = ttk.Scrollbar(self.counter_frame, orient="vertical", command=self.counter_table.yview)
@@ -168,7 +168,7 @@ class SerialMonitorGUI:
 
         # Настройки кодировки
         encoding_frame = ttk.LabelFrame(fixed_frame, text="Кодировка")
-        encoding_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nw")
+        encoding_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nwe")
 
         # Кнопки выбора кодировок
         ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0, sticky="w")
@@ -362,13 +362,11 @@ class SerialMonitorGUI:
     def _update_text_area(self, formatted_data):
         """Обновление данных в дереве и отправка их в очередь для записи в лог"""
         # Разделяем данные на время и содержимое
-        parts = formatted_data.split('  ', 1)
-        if len(parts) == 2:
+        parts = formatted_data.split('  ', 2)
+        if len(parts) == 3:
             timestamp = parts[0]
             raw_data = parts[1]
-
-            # Здесь можно добавить декодированные данные
-            decoded_data = ""  # Оставляем пустым для примера
+            decoded_data = parts[2]
 
             # Обновляем дерево (GUI) из главного потока
             self.tree.insert('', 'end', values=(timestamp, raw_data, decoded_data))

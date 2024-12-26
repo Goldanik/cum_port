@@ -135,6 +135,7 @@ class DataProcessing:
     def orion2_parser(self, data_bytes):
         """Парсер для кодировки Orion2."""
         while data_bytes and not self.data_process_event.is_set():
+            decode = ""
             # Ищем 'ff'
             next_ff = data_bytes.find(b"\xFF", 2 if len(data_bytes) > 2 else 0)
             #self.main_gui.update_message_area(f"Данные на парсинг: {len(data)}, {data}, {next_ff}")
@@ -154,30 +155,53 @@ class DataProcessing:
 
             if self.main_gui.skip_requests and (len(packet) > 4) and packet.startswith('ff'):
                 temp_packet = packet[4:]
-                # Подсчёт пакетов IN для каждого адреса
+                # Пакеты IN запросы для каждого адреса
                 if temp_packet.startswith('1f'):
                     address = int(packet[2:4], 16) & 0x1F
-                    self.main_gui.req_ack_counters[int(address)] += 1
-                    packet = ""
-                # Подсчёт пакетов SEARCH для каждого адреса
+                    # Ответы ACK если байт не NACK
+                    if temp_packet.find('6f') != 4:
+                        temp_packet = temp_packet[4:]
+                        decode = "REQACK+"
+                    else:
+                        self.main_gui.req_ack_counters[int(address)] += 1
+                        continue
+                # Пакеты DATA0
+                if temp_packet.startswith('2f'):
+                    temp_packet = temp_packet[len(temp_packet)-4:]
+                    if temp_packet.startswith('4f'):
+                        packet = packet[6:len(packet)-4]
+                        decode += "DATA0+ACK0"
+                    else:
+                        packet = temp_packet[6:]
+                        decode += "DATA0+NACK"
+                # Пакеты DATA1
+                elif temp_packet.startswith('3f'):
+                    temp_packet = temp_packet[len(temp_packet)-4:]
+                    if temp_packet.startswith('5f'):
+                        packet = packet[6:len(packet)-4]
+                        decode += "DATA1+ACK1"
+                    else:
+                        packet = temp_packet[6:]
+                        decode += "DATA1+NACK"
+                # Пакеты SEARCH для каждого адреса
                 elif temp_packet.startswith('8f'):
                     address = int(packet[2:4], 16) & 0x1F
                     self.main_gui.search_counters[int(address)] += 1
-                    packet = ""
-                # Подсчёт пакетов GETID для каждого адреса
+                    continue
+                # Пакеты GETID для каждого адреса
                 elif temp_packet.startswith('af'):
                     address = int(packet[2:4], 16) & 0x1F
                     if address < 33:
                         self.main_gui.get_id_counters[address] += 1
-                    packet = ""
-
+                    continue
+                # Пакеты GIVEADDR
                 if packet:
                     temp_packet = packet[2:]
                     if temp_packet.startswith('80') and temp_packet.find('9f') == 14:
                         address = int(packet[22:24])
                         self.main_gui.give_addr[address] = (temp_packet[12:14]+":"+temp_packet[10:12]+":"+temp_packet[8:10]
                               +":"+temp_packet[6:8]+":"+temp_packet[4:6]+":"+temp_packet[2:4])
-                        packet = ""
+                        continue
 
                 custom_pattern = self.main_gui.custom_skip_pattern.get().lower()
                 if custom_pattern: # and all(c in "0123456789abcdef"for c in custom_pattern):
@@ -191,9 +215,9 @@ class DataProcessing:
 
             if packet:
                 try:
-                    self.logger_queue.put(f"{self.timestamp}  {packet}  ")
+                    self.logger_queue.put(f"{self.timestamp}  {packet}  {decode}")
                     # Обновляем GUI
-                    self.main_gui.update_text_area(f"{self.timestamp}  {packet}  ")
+                    self.main_gui.update_text_area(f"{self.timestamp}  {packet}  {decode}")
                     #self.main_gui.update_message_area(f"Размер очереди2: {self.logger_queue.qsize()}")
                 except queue.Full:
                     self.main_gui.update_message_area(f"Очередь заполнена")

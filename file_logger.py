@@ -1,3 +1,4 @@
+import os
 import queue
 import threading
 import datetime
@@ -6,6 +7,11 @@ class FileLogger:
     def __init__(self, log_queue, main_gui):
         self.log_file_name = "log_"
         self.log_file_format= ".txt"
+
+        self.folder_path = 'logs'
+        if not os.path.exists(self.folder_path):
+            os.makedirs(self.folder_path)
+
         # Поток логера
         self.log_queue = log_queue
         self.log_thread = None
@@ -24,8 +30,9 @@ class FileLogger:
         self.timestamp = datetime.datetime.now().strftime("%H_%M_%S")
         # Проверяем что файл можно открыть
         try:
-            with open(self.log_file_name+self.timestamp+self.log_file_format, "a", encoding="utf-8", buffering=1):
+            with open(os.path.join(self.folder_path,self.log_file_name+self.timestamp+self.log_file_format), "a", encoding="utf-8", buffering=1):
                 pass  # Проверяем, что файл доступен для записи
+            self.main_gui.update_message_area(f"Файл лога - {self.log_file_name+self.timestamp+self.log_file_format} создан в папке {self.folder_path}")
         except Exception as e:
             self.main_gui.update_message_area(f"Ошибка открытия файла лога: {e}")
             return
@@ -59,7 +66,8 @@ class FileLogger:
                 if len(self.buffer) >= self.buffer_size:
                     # Если буфер заполнен, записываем все в файл
                     try:
-                        with open(self.log_file_name+self.timestamp+self.log_file_format, "a", encoding="utf-8") as log_file:
+                        with open(os.path.join(self.folder_path,self.log_file_name+self.timestamp+self.log_file_format),
+                                  "a", encoding="utf-8", buffering=1) as log_file:
                             log_file.writelines(self.buffer)
                             self.buffer = []
                     except Exception as e:
@@ -70,7 +78,8 @@ class FileLogger:
         # Записываем оставшиеся данные из буфера после остановки потока
         if self.buffer:
             try:
-                with open(self.log_file_name+self.timestamp+self.log_file_format, "a", encoding="utf-8") as log_file:
+                with open(os.path.join(self.folder_path, self.log_file_name + self.timestamp + self.log_file_format),
+                          "a", encoding="utf-8", buffering=1) as log_file:
                      log_file.writelines(self.buffer)
             except Exception as e:
                 self.main_gui.update_message_area(f"Ошибка записи лога: {e}")
