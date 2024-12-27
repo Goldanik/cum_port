@@ -31,7 +31,7 @@ class SerialMonitorGUI:
         self.req_ack_counters = [0] * 32  # Счетчики REQ/ACK для каждого адреса
         self.search_counters = [0] * 32  # Счетчики SEARCH для каждого адреса
         self.get_id_counters = [0] * 32  # Счетчики GETID для каждого адреса
-        self.give_addr = [0] * 32  # Счетчики GIVEADDR для каждого адреса
+        self.give_addr = [""] * 32  # Мак-адрес GIVEADDR для каждого адреса
 
         # Присваиваем себе экземпляр очереди
         self.log_queue = logger_queue
@@ -56,8 +56,8 @@ class SerialMonitorGUI:
         # Присваиваем себе функционал ткинтера
         self.gui = gui
         self.gui.title("CUM_port ver.beta.1")
-        self.gui.geometry("1024x768")
-        self.gui.minsize(1024,768)
+        self.gui.geometry("1280x768")
+        self.gui.minsize(1280,768)
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
         # Обновляем GUI по таймеру
@@ -180,14 +180,18 @@ class SerialMonitorGUI:
         tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
 
         # Create Treeview
-        self.tree = ttk.Treeview(tree_frame, columns=("time", "raw_data", "decoded_data"), show="headings")
+        self.tree = ttk.Treeview(tree_frame, columns=("time", "direction", "raw_data", "packet_type", "decoded_data"), show="headings")
         self.tree.heading("time", text="Время")
+        self.tree.heading("direction", text="Направление")
         self.tree.heading("raw_data", text="Сырые данные")
+        self.tree.heading("packet_type", text="Тип пакета")
         self.tree.heading("decoded_data", text="Расшифрованные данные")
 
         # Configure column widths
-        self.tree.column("time", width=100, stretch=False)
+        self.tree.column("time", width=100, stretch=False, anchor="center")
+        self.tree.column("direction", width=250, stretch=False, anchor="center")
         self.tree.column("raw_data", width=300)
+        self.tree.column("packet_type", width=100, anchor="center")
         self.tree.column("decoded_data", width=100)
 
         # Add vertical scrollbar
@@ -255,14 +259,6 @@ class SerialMonitorGUI:
                 # Запускаем поток логера
                 self.file_logger.start_logger()
                 self.update_message_area(f"Порт {self.port.get()} открыт.")
-            # while self.serial_port.ser.is_open:
-            #     # Читаем данные из файла
-            #     try:
-            #         with open(self.file_logger.log_file, "rt", encoding="utf-8") as log_file:
-            #             data = log_file.readline()
-            #             self.update_text_area(data)
-            #     except Exception as e:
-            #         self.update_message_area(f"Ошибка чтения лога: {e}")
         except serial.SerialException as e:
             self.update_message_area(f"Ошибка открытия порта: {e}")
             return
@@ -332,11 +328,17 @@ class SerialMonitorGUI:
         """Обновление данных в таблице счетчиков."""
         # Обновляем данные в строках таблицы
         for i in range(32):
-            # Получаем текущие значения счетчиков REQ/ACK и SEARCH для каждого адреса
+            # Получаем текущие значения счетчиков для каждого адреса
             req_ack_count = self.req_ack_counters[i]  # Массив счетчиков REQ/ACK
             search_count = self.search_counters[i]  # Массив счетчиков SEARCH
-            getid_count = self.get_id_counters[i]  # Массив счетчиков GETID
-            give_addr = self.give_addr[i]  # Массив адресов GIVEADDR
+            getid_count = str(self.get_id_counters[i])  # Массив счетчиков GETID
+            # Массив мак-адресов GETID преобразуем в читаемый вид
+            if self.give_addr[i]:
+                give_addr = self.give_addr[i]
+                pairs = [give_addr[i:i + 2] for i in range(0, 12, 2)]
+                give_addr = ":".join(reversed(pairs))
+            else:
+                give_addr = ""
 
             # Обновляем соответствующую строку в таблице
             self.counter_table.item(self.counter_table.get_children()[i], values=(i, req_ack_count, search_count, getid_count, give_addr))
@@ -362,19 +364,27 @@ class SerialMonitorGUI:
     def _update_text_area(self, formatted_data):
         """Обновление данных в дереве и отправка их в очередь для записи в лог"""
         # Разделяем данные на время и содержимое
-        parts = formatted_data.split('  ', 2)
-        if len(parts) == 3:
+        parts = formatted_data.split('  ', 4)
+        if len(parts) == 5:
             timestamp = parts[0]
+            direction = parts[1]
+            raw_data = parts[2]
+            packet_type = parts[3]
+            decoded_data = parts[4]
+        elif len(parts) == 3:
+            timestamp = parts[0]
+            direction = ""
             raw_data = parts[1]
-            decoded_data = parts[2]
+            packet_type = ""
+            decoded_data = ""
 
-            # Обновляем дерево (GUI) из главного потока
-            self.tree.insert('', 'end', values=(timestamp, raw_data, decoded_data))
-            # Опускаем скроллбар вниз
-            self.tree.yview_moveto(1)
-            # Ограничиваем количество строк в дереве удаляя старые
-            if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
-                self.tree.delete(self.tree.get_children()[0])
+        # Обновляем дерево (GUI) из главного потока
+        self.tree.insert('', 'end', values=(timestamp, direction, raw_data, packet_type, decoded_data))
+        # Опускаем скроллбар вниз
+        self.tree.yview_moveto(1)
+        # Ограничиваем количество строк в дереве удаляя старые
+        if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
+            self.tree.delete(self.tree.get_children()[0])
 
     def process_gui_queue(self):
         # Добавляем временный буфер для накопления данных
@@ -387,15 +397,15 @@ class SerialMonitorGUI:
                 accumulated_message_data.append(data)
             elif type == 'text':
                 accumulated_text_data.append(data)
-
-        # Обновляем GUI с накопленными данными
-        if accumulated_message_data:
-            self._update_message_area("\n".join(accumulated_message_data))
-        if accumulated_text_data:
-            for text_data in accumulated_text_data:
-                self._update_text_area(text_data)
-        #self._update_message_area(f"Размер очереди гуи: {self.data_queue.qsize()}")
-        self.update_counters()
+        if self.serial_port.ser and self.serial_port.ser.is_open:
+            # Обновляем GUI с накопленными данными
+            if accumulated_message_data:
+                self._update_message_area("\n".join(accumulated_message_data))
+            if accumulated_text_data:
+                for text_data in accumulated_text_data:
+                    self._update_text_area(text_data)
+            #self._update_message_area(f"Размер очереди гуи: {self.data_queue.qsize()}")
+            self.update_counters()
         # Повторный вызов через 100 мс
         self.gui.after(200, self.process_gui_queue)
 
