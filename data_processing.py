@@ -30,8 +30,12 @@ class DataProcessing:
     def start_data_processing(self):
         # Запускаем отдельный поток для обработки данных
         self.data_process_event.clear()
-        self.data_process_thread = threading.Thread(target=self.encodings_handler, daemon=True)
-        self.data_process_thread.start()
+        encoding = self.main_gui.encoding.get()  # Получаем значение перед запуском потока
+        if not self.data_process_thread or not self.data_process_thread.is_alive():
+            self.data_process_thread = threading.Thread(
+                target=self.encodings_handler, args=(encoding,), daemon=True
+            )
+            self.data_process_thread.start()
 
     def stop_data_processing(self):
         # Останавливаем обработку данных
@@ -41,7 +45,7 @@ class DataProcessing:
         # Очищаем ссылку на поток
         self.data_process_thread = None
 
-    def encodings_handler(self):
+    def encodings_handler(self, encoding):
         """Обработка кодировок данных."""
         while not self.data_process_event.is_set():
             try:
@@ -50,7 +54,6 @@ class DataProcessing:
                 continue  # Если нет данных, продолжаем ожидание
             self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
             # Значение по умолчанию
-            encoding = self.main_gui.encoding.get()
             if encoding == "O2":
                 # Передаем данные напрямую в парсер
                 self.orion2_parser(current_buffer)
@@ -243,6 +246,10 @@ class DataProcessing:
 
             if packet:
                 try:
+                    # Парсинг длины
+
+                    # Парсинг номера пакета
+
                     # Парсинг флагов пакета
                     flags = str(packet[4:6])
                     if flags:
@@ -252,7 +259,7 @@ class DataProcessing:
                         for num, string in zip(array_flags, self.packet_header):
                             if num != 0:
                                 decode += string + ":"
-                    # Обрезка идентификаторов
+                    # Парсинг и обрезка идентификаторов
                     mac = ["00:00:00:00:00:00"] * 2
                     for item in self.main_gui.give_addr:
                         if item:
