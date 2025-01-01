@@ -71,6 +71,7 @@ class SerialMonitorGUI:
 
         # Создание элементов интерфейса
         self.create_widgets()
+        self.update_column_width_based_on_encoding()
 
     # Создание графического окна
     def create_widgets(self):
@@ -171,10 +172,14 @@ class SerialMonitorGUI:
         encoding_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nwe")
 
         # Кнопки выбора кодировок
-        ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2").grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX").grid(row=1, column=0, sticky="w")
-        ttk.Radiobutton(encoding_frame, text="BIN", variable=self.encoding, value="BIN").grid(row=2, column=0, sticky="w")
-        ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII").grid(row=3, column=0, sticky="w")
+        ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2",
+                        command=self.update_column_width_based_on_encoding).grid(row=0, column=0, sticky="w")
+        ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX",
+                        command=self.update_column_width_based_on_encoding).grid(row=1, column=0, sticky="w")
+        ttk.Radiobutton(encoding_frame, text="BIN", variable=self.encoding, value="BIN",
+                        command=self.update_column_width_based_on_encoding).grid(row=2, column=0, sticky="w")
+        ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII",
+                        command=self.update_column_width_based_on_encoding).grid(row=3, column=0, sticky="w")
 
         tree_frame = ttk.Frame(stretchable_frame)
         tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
@@ -189,8 +194,8 @@ class SerialMonitorGUI:
 
         # Configure column widths
         self.tree.column("time", width=100, stretch=False, anchor="center")
-        self.tree.column("direction", width=250, stretch=False, anchor="center")
-        self.tree.column("raw_data", width=300)
+        self.tree.column("direction", width=100, stretch=False, anchor="center")
+        self.tree.column("raw_data", width=100)
         self.tree.column("packet_type", width=100, anchor="center")
         self.tree.column("decoded_data", width=100)
 
@@ -233,6 +238,20 @@ class SerialMonitorGUI:
         self.gui.grid_rowconfigure(0, weight=1)
         self.gui.grid_columnconfigure(0, weight=0)
         self.gui.grid_columnconfigure(1, weight=1)
+
+    def update_column_width_based_on_encoding(self):
+        """Обновляет ширину столбца 'Направление' в зависимости от выбранной кодировки."""
+        current_encoding = self.encoding.get()
+        if current_encoding == "O2":
+            self.tree.column("direction", width=250)
+            self.tree.column("raw_data", width=300)
+            self.tree.column("packet_type", width=100)
+            self.tree.column("decoded_data", width=100)
+        else:
+            self.tree.column("direction", width=50)
+            self.tree.column("raw_data", width=500)
+            self.tree.column("packet_type", width=50)
+            self.tree.column("decoded_data", width=50)
 
     # Открытие последовательного порта
     def attempt_open_port(self):
@@ -406,7 +425,7 @@ class SerialMonitorGUI:
                     self._update_text_area(text_data)
             #self._update_message_area(f"Размер очереди гуи: {self.data_queue.qsize()}")
             self.update_counters()
-        # Повторный вызов через 100 мс
+        # Повторный вызов через 200 мс
         self.gui.after(200, self.process_gui_queue)
 
     def calc_crc7(self, old_crc, in_byte):
@@ -451,3 +470,6 @@ app = SerialMonitorGUI(main, logger_queue=log_queue, data_proc_queue=data_queue)
 # print(f"CRC7: {crc7_result:#04x}")
 # Запускаем главный цикл
 main.mainloop()
+
+# Сборка
+# pyinstaller --onefile -w cum_port.py
