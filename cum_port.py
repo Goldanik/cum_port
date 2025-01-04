@@ -76,8 +76,8 @@ class SerialMonitorGUI:
         self.create_widgets()
         self.update_column_width_based_on_encoding()
 
-    # Создание графического окна
     def create_widgets(self):
+        """Создание графического окна"""
         # Создаем два фрейма: для фиксированного и растягивающегося содержимого
         fixed_frame = tk.Frame(self.gui, bg="gray")
         fixed_frame.grid_columnconfigure(0, minsize=350)
@@ -198,19 +198,15 @@ class SerialMonitorGUI:
         tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
 
         # Create Treeview
-        self.tree = ttk.Treeview(tree_frame, columns=("time", "direction", "raw_data", "packet_type", "decoded_data"), show="headings")
+        self.tree = ttk.Treeview(tree_frame, columns=("time", "raw_data", "len", "pnum",
+                                                      "direction", "packet_type", "decoded_data"), show="headings")
         self.tree.heading("time", text="Время")
-        self.tree.heading("direction", text="Направление")
         self.tree.heading("raw_data", text="Сырые данные")
+        self.tree.heading("len", text="Длина")
+        self.tree.heading("pnum", text="Номер пакета")
+        self.tree.heading("direction", text="Направление")
         self.tree.heading("packet_type", text="Тип пакета")
         self.tree.heading("decoded_data", text="Расшифрованные данные")
-
-        # Configure column widths
-        self.tree.column("time", width=100, stretch=False, anchor="center")
-        self.tree.column("direction", width=100, stretch=False, anchor="center")
-        self.tree.column("raw_data", width=100)
-        self.tree.column("packet_type", width=100, anchor="center")
-        self.tree.column("decoded_data", width=100)
 
         # Add vertical scrollbar
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
@@ -253,7 +249,6 @@ class SerialMonitorGUI:
         self.gui.grid_columnconfigure(0, weight=0)
         self.gui.grid_columnconfigure(1, weight=1)
 
-    # Открытие файла с сырыми данными
     def open_file(self):
         """Открывает текстовый файл, читает его содержимое и отправляет данные в очередь."""
         try:
@@ -286,22 +281,27 @@ class SerialMonitorGUI:
         except Exception as e:
             self.update_message_area(f"Ошибка при чтении файла: {e}")
 
-    # Обновление ширины столбцов вывода в зависимости от кодировки
     def update_column_width_based_on_encoding(self):
-        """Обновляет ширину столбца 'Направление' в зависимости от выбранной кодировки."""
+        """Обновляет ширину столбцов в таблице данных в зависимости от выбранной кодировки."""
         if self.encoding.get() == "O2":
-            self.tree.column("direction", width=250)
+            self.tree.column("time", width=100, stretch=False, anchor="center")
             self.tree.column("raw_data", width=300)
-            self.tree.column("packet_type", width=100)
+            self.tree.column("len", width=50,stretch=False, anchor="center")
+            self.tree.column("pnum", width=100,stretch=False, anchor="center")
+            self.tree.column("direction", width=250, anchor="center")
+            self.tree.column("packet_type", width=150, anchor="center")
             self.tree.column("decoded_data", width=100)
         else:
-            self.tree.column("direction", width=50)
+            self.tree.column("time", width=100, stretch=False, anchor="center")
             self.tree.column("raw_data", width=500)
-            self.tree.column("packet_type", width=50)
-            self.tree.column("decoded_data", width=50)
+            self.tree.column("len", width=40)
+            self.tree.column("pnum", width=40)
+            self.tree.column("direction", width=40)
+            self.tree.column("packet_type", width=40)
+            self.tree.column("decoded_data", width=40)
 
-    # Открытие последовательного порта
     def attempt_open_port(self):
+        """Открытие последовательного порта"""
         try:
             # Закрываем порт, если он уже открыт
             if self.serial_port.ser and self.serial_port.ser.is_open:
@@ -329,8 +329,8 @@ class SerialMonitorGUI:
             self.update_message_area(f"Ошибка открытия порта: {e}")
             return
 
-    # Закрытие последовательного порта
     def attempt_close_port(self):
+        """Закрытие последовательного порта"""
         try:
             self.serial_port.close_port()
             self.data_proc.stop_data_processing()
@@ -346,7 +346,6 @@ class SerialMonitorGUI:
         ports = serial.tools.list_ports.comports()
         return [port.device for port in ports]
 
-    # Обновление списка активных портов
     def refresh_ports(self):
         """Обновляет список доступных COM-портов."""
         available_ports = self.get_available_ports()
@@ -356,8 +355,8 @@ class SerialMonitorGUI:
         else:
             self.port.set("")  # Если портов нет, сбрасываем значение
 
-    # Функционал копирования строк из окна вывода
     def copy_selection(self, event):
+        """Функционал копирования строк из окна вывода"""
         selected_items = self.tree.selection()
         if not selected_items:
             return
@@ -371,8 +370,8 @@ class SerialMonitorGUI:
         self.gui.clipboard_clear()
         self.gui.clipboard_append(copied_string)
 
-    # Кнопка очистки окна вывода
     def clear_screen(self):
+        """Кнопка очистки окна вывода"""
         # Сбрасываем счетчики в списках (инициализируем заново)
         self.req_ack_counters = [0] * 32
         self.search_counters = [0] * 32
@@ -383,15 +382,14 @@ class SerialMonitorGUI:
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-    # Переключатель пропуска пакетов
     def toggle_skip_requests(self):
+        """Переключатель пропуска пакетов"""
         self.skip_requests = not self.skip_requests
         if self.skip_requests:
             self.skip_button.config(text="Включен пропуск запросов")
         else:
             self.skip_button.config(text="Пропускать запросы")
 
-    # Обновление счетчиков для пропускаемых пакетов
     def update_counters(self):
         """Обновление данных в таблице счетчиков."""
         # Обновляем данные в строках таблицы
@@ -411,12 +409,12 @@ class SerialMonitorGUI:
             # Обновляем соответствующую строку в таблице
             self.counter_table.item(self.counter_table.get_children()[i], values=(i, req_ack_count, search_count, getid_count, give_addr))
 
-    # Запись в очередь гуи для информационной строки
     def update_message_area(self, message):
+        """Запись в очередь гуи для информационной строки"""
         self.gui_queue.put(('message', message))
 
-    # Обновление информационной строки
     def _update_message_area(self, message):
+        """Обновление информационной строки"""
         # Разрешаем редактирование
         self.message_area.config(state=tk.NORMAL)
         # Добавляем сообщение
@@ -426,52 +424,52 @@ class SerialMonitorGUI:
         # Запрещаем редактирование
         self.message_area.config(state=tk.DISABLED)
 
-    # Запись в очередь гуи для окна вывода
-    def update_text_area(self, formatted_data):
+    def update_data_area(self, formatted_data):
+        """Запись в очередь гуи для окна вывода"""
         self.gui_queue.put(('text', formatted_data))
 
-    # Обновление окна вывода
-    def _update_text_area(self, formatted_data):
-        """Обновление данных в дереве и отправка их в очередь для записи в лог"""
+    def _update_data_area(self, formatted_data):
+        """Обновление данных в окне вывода"""
         timestamp = ""
-        direction = ""
         raw_data = ""
+        data_len = ""
+        pnum = ""
+        direction = ""
         packet_type = ""
         decoded_data = ""
         # Разделяем данные на время и содержимое
-        parts = formatted_data.split('  ', 4)
-        if len(parts) == 5:
+        parts = formatted_data.split('@', 6)
+        if len(parts) == 7:
             timestamp = parts[0]
-            direction = parts[1]
-            raw_data = parts[2]
-            packet_type = parts[3]
-            decoded_data = parts[4]
+            raw_data = parts[1]
+            data_len = parts[2]
+            pnum = parts[3]
+            direction = parts[4]
+            packet_type = parts[5]
+            decoded_data = parts[6]
         elif len(parts) == 3:
             timestamp = parts[0]
-            direction = ""
             raw_data = parts[1]
-            packet_type = ""
-            decoded_data = ""
 
         # Обновляем дерево (GUI) из главного потока
-        self.tree.insert('', 'end', values=(timestamp, direction, raw_data, packet_type, decoded_data))
+        self.tree.insert('', 'end', values=(timestamp, raw_data, data_len, pnum, direction, packet_type, decoded_data))
         # Опускаем скроллбар вниз
         self.tree.yview_moveto(1)
         # Ограничиваем количество строк в дереве удаляя старые
         if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
             self.tree.delete(self.tree.get_children()[0])
 
-    # Обработчик очередь гуи
     def process_gui_queue(self):
+        """Обработчик очереди гуи и отрисовка данных"""
         # Добавляем временный буфер для накопления данных
         accumulated_text_data = []
         accumulated_message_data = []
 
         while not self.gui_queue.empty():
-            type, data = self.gui_queue.get()
-            if type == 'message':
+            msg_type, data = self.gui_queue.get()
+            if msg_type == 'message':
                 accumulated_message_data.append(data)
-            elif type == 'text':
+            elif msg_type == 'text':
                 accumulated_text_data.append(data)
         if (self.serial_port.ser and self.serial_port.ser.is_open) or self.file_open:
             # Обновляем GUI с накопленными данными
@@ -479,7 +477,7 @@ class SerialMonitorGUI:
                 self._update_message_area("\n".join(accumulated_message_data))
             if accumulated_text_data:
                 for text_data in accumulated_text_data:
-                    self._update_text_area(text_data)
+                    self._update_data_area(text_data)
             #self._update_message_area(f"Размер очереди гуи: {self.data_queue.qsize()}")
             self.update_counters()
         if self.file_open:
@@ -490,35 +488,6 @@ class SerialMonitorGUI:
         # Повторный вызов через 200 мс
         self.gui.after(200, self.process_gui_queue)
 
-    def calc_crc7(self, old_crc, in_byte):
-        temp = 0
-        in_byte ^= old_crc
-
-        if in_byte & 0x01:
-            temp ^= 0x49
-        if in_byte & 0x02:
-            temp ^= 0x25
-        if in_byte & 0x04:
-            temp ^= 0x4A
-        if in_byte & 0x08:
-            temp ^= 0x23
-        if in_byte & 0x10:
-            temp ^= 0x46
-        if in_byte & 0x20:
-            temp ^= 0x3B
-        if in_byte & 0x40:
-            temp ^= 0x76
-        if in_byte & 0x80:
-            temp ^= 0x5B
-
-        return temp
-
-    def calculate_crc7(self, data):
-        crc7 = 0xFF
-        for byte in data:
-            crc7 = self.calc_crc7(crc7, byte)
-        return crc7
-
 # Очередь логера
 log_queue = queue.Queue()
 # Очередь данных последовательного порта
@@ -527,9 +496,6 @@ data_queue = queue.Queue()
 main = tk.Tk()
 # Создаем один экземпляр GUI
 app = SerialMonitorGUI(main, logger_queue=log_queue, data_proc_queue=data_queue)
-# data = [0x01, 0x1f]  # Пример массива данных
-# crc7_result = app.calculate_crc7(data)
-# print(f"CRC7: {crc7_result:#04x}")
 # Запускаем главный цикл
 main.mainloop()
 
