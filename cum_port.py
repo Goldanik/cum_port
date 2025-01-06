@@ -57,9 +57,9 @@ class SerialMonitorGUI:
 
         # Присваиваем себе функционал ткинтера
         self.gui = gui
-        self.gui.title("CUM_port ver.beta.1")
-        self.gui.geometry("1280x768")
-        self.gui.minsize(1280,768)
+        self.gui.title("CUM-port")
+        self.gui.geometry("1270x750")
+        self.gui.minsize(1270,750)
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
         # Обновляем GUI по таймеру
@@ -194,7 +194,7 @@ class SerialMonitorGUI:
             self.counter_table.insert("", "end", values=(i, 0, 0, 0))
 
         # Добавим счетчик для пользовательского шаблона
-        self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон: не задан")
+        self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон фильтрации данных: не задан")
         self.counter_label_custom.grid(row=3, column=0, padx=5, pady=2, sticky="w")
 
         # Кнопка "Пропускать запросы"
@@ -263,6 +263,10 @@ class SerialMonitorGUI:
                                     yscrollcommand=scrollbar_message.set, state=tk.DISABLED)
         self.message_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar_message.config(command=self.message_area.yview)
+
+        # Информационная строка
+        info_label = ttk.Label(stretchable_frame, text="Версия:1.0    tg:@danyagolovanov", anchor="e")
+        info_label.grid(row=3, column=0, padx=10, pady=5, sticky="we")
 
         # Фиксируем строки внутри фиксированного фрейма
         fixed_frame.grid_rowconfigure(0, weight=0)  # Строка 0 фиксирована
