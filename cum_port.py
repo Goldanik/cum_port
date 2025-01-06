@@ -203,9 +203,9 @@ class SerialMonitorGUI:
         self.tree.heading("time", text="Время")
         self.tree.heading("raw_data", text="Сырые данные")
         self.tree.heading("len", text="Длина")
-        self.tree.heading("pnum", text="Номер пакета")
+        self.tree.heading("pnum", text="Pnum")
         self.tree.heading("direction", text="Направление")
-        self.tree.heading("packet_type", text="Тип пакета")
+        self.tree.heading("packet_type", text="Заголовок")
         self.tree.heading("decoded_data", text="Расшифрованные данные")
 
         # Add vertical scrollbar
@@ -285,11 +285,11 @@ class SerialMonitorGUI:
         """Обновляет ширину столбцов в таблице данных в зависимости от выбранной кодировки."""
         if self.encoding.get() == "O2":
             self.tree.column("time", width=100, stretch=False, anchor="center")
-            self.tree.column("raw_data", width=300)
-            self.tree.column("len", width=50,stretch=False, anchor="center")
-            self.tree.column("pnum", width=100,stretch=False, anchor="center")
-            self.tree.column("direction", width=250, anchor="center")
-            self.tree.column("packet_type", width=150, anchor="center")
+            self.tree.column("raw_data", width=100)
+            self.tree.column("len", width=50, stretch=False, anchor="center")
+            self.tree.column("pnum", width=50, stretch=False, anchor="center")
+            self.tree.column("direction", width=220, stretch=False)
+            self.tree.column("packet_type", width=150)
             self.tree.column("decoded_data", width=100)
         else:
             self.tree.column("time", width=100, stretch=False, anchor="center")
