@@ -153,19 +153,23 @@ class SerialMonitorGUI:
 
         # Рамка "Функции Орион 2"
         o2_frame = ttk.LabelFrame(fixed_frame, text="Функции Орион 2")
-        o2_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nwe")
+        o2_frame.grid(row=3, column=0, padx=10, pady=5, sticky="nwe")
 
         # Рамка "Счетчики пропущенных запросов"
         self.counter_frame = ttk.LabelFrame(o2_frame, text="Счетчики пропущенных запросов")
         self.counter_frame.grid(row=7, column=0, pady=5, sticky="nwe")
 
-        # Поле для пользовательского шаблона
-        self.custom_pattern_frame = ttk.Frame(self.counter_frame)
-        self.custom_pattern_frame.grid(row=4, column=0, padx=5, pady=2, sticky="w")
-
-        ttk.Label(self.custom_pattern_frame, text="Свой шаблон:").grid(row=0, column=0, padx=(0, 5))
-        self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern, width=20)
-        self.custom_pattern_entry.grid(row=0, column=1)
+        # # Поле для пользовательского шаблона
+        # self.custom_pattern_frame = ttk.Frame(self.counter_frame)
+        # self.custom_pattern_frame.grid(row=4, column=0, padx=5, pady=2, sticky="w")
+        #
+        # ttk.Label(self.custom_pattern_frame, text="Свой шаблон:").grid(row=0, column=0, padx=(0, 5))
+        # self.custom_pattern_entry = ttk.Entry(self.custom_pattern_frame, textvariable=self.custom_skip_pattern, width=20)
+        # self.custom_pattern_entry.grid(row=0, column=1)
+        #
+        # # Добавим счетчик для пользовательского шаблона
+        # self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон фильтрации данных: не задан")
+        # self.counter_label_custom.grid(row=3, column=0, padx=5, pady=5, sticky="w")
 
         # Создаем таблицу для отображения данных
         self.counter_table = ttk.Treeview(self.counter_frame, columns=("address", "req_ack", "search", "get_id", "give_addr"),
@@ -193,17 +197,13 @@ class SerialMonitorGUI:
         for i in range(32):
             self.counter_table.insert("", "end", values=(i, 0, 0, 0))
 
-        # Добавим счетчик для пользовательского шаблона
-        self.counter_label_custom = ttk.Label(self.counter_frame, text="Свой шаблон фильтрации данных: не задан")
-        self.counter_label_custom.grid(row=3, column=0, padx=5, pady=2, sticky="w")
-
         # Кнопка "Пропускать запросы"
-        self.skip_button = ttk.Button(o2_frame, text="Включен пропуск запросов", command=self.toggle_skip_requests)
-        self.skip_button.grid(row=6, column=0, columnspan=2, pady=(5, 0), sticky="nw")
+        # self.skip_button = ttk.Button(o2_frame, text="Включен пропуск запросов", command=self.toggle_skip_requests)
+        # self.skip_button.grid(row=6, column=0, columnspan=2, pady=(5, 0), sticky="nw")
 
         # Настройки кодировки
         encoding_frame = ttk.LabelFrame(fixed_frame, text="Кодировка")
-        encoding_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nwe")
+        encoding_frame.grid(row=2, column=0, padx=10, pady=5, sticky="nwe")
 
         # Кнопки выбора кодировок
         ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2",
@@ -215,6 +215,21 @@ class SerialMonitorGUI:
 
         tree_frame = ttk.Frame(stretchable_frame)
         tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
+
+        # Добавляем фрейм для галочки автопрокрутки
+        scroll_control_frame = ttk.Frame(fixed_frame)
+        scroll_control_frame.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="ew")
+
+        # Переменная для отслеживания состояния галочки автопрокрутки
+        self.autoscroll_enabled = tk.BooleanVar(value=True)
+
+        # Галочка для автопрокрутки
+        self.autoscroll_checkbox = ttk.Checkbutton(
+            scroll_control_frame,
+            text="Автопрокрутка",
+            variable=self.autoscroll_enabled
+        )
+        self.autoscroll_checkbox.pack(side=tk.LEFT)
 
         # Добавляем фрейм для галочек над таблицей
         column_options_frame = ttk.Frame(tree_frame)
@@ -468,6 +483,14 @@ class SerialMonitorGUI:
         """Запись в очередь гуи для окна вывода"""
         self.gui_queue.put(('text', formatted_data))
 
+    def append_to_tree(self, values):
+        """Добавление строки в таблицу с учетом автопрокрутки."""
+        self.tree.insert('', 'end', values=values)
+
+        # Выполняем автопрокрутку, только если галочка включена
+        if self.autoscroll_enabled.get():
+            self.tree.yview_moveto(1.0)  # Прокрутка в самый низ
+
     def _update_data_area(self, formatted_data):
         """Обновление данных в окне вывода"""
         timestamp = ""
@@ -492,9 +515,7 @@ class SerialMonitorGUI:
             raw_data = parts[1]
 
         # Обновляем дерево (GUI) из главного потока
-        self.tree.insert('', 'end', values=(timestamp, raw_data, data_len, pnum, direction, packet_type, decoded_data))
-        # Опускаем скроллбар вниз
-        self.tree.yview_moveto(1)
+        self.append_to_tree((timestamp, raw_data, data_len, pnum, direction, packet_type, decoded_data))
         # Ограничиваем количество строк в дереве удаляя старые
         if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
             self.tree.delete(self.tree.get_children()[0])
