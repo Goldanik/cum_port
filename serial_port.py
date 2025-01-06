@@ -1,6 +1,7 @@
 import queue
 import threading
 import serial
+import serial.tools.list_ports
 
 class SerialPort:
     def __init__(self, data_proc_queue, main_gui):
@@ -59,6 +60,11 @@ class SerialPort:
         finally:
             # Очищаем ссылку на поток
             self.serial_thread = None
+
+    def get_available_ports(self):
+        """Возвращает список доступных COM-портов."""
+        ports = serial.tools.list_ports.comports()
+        return [port.device for port in ports]
 
     # Чтение данных из последовательного порта
     def read_serial(self):

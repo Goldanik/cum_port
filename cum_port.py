@@ -1,7 +1,5 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
-import serial
-import serial.tools.list_ports
 import queue
 
 # Свои реализации
@@ -51,8 +49,9 @@ class SerialMonitorGUI:
         self.parity = tk.StringVar(value="N")
         self.stop_bits = tk.IntVar(value=1)
         self.encoding = tk.StringVar(value="O2")
+
         # Устанавливаем первый порт как текущий
-        available_ports = self.get_available_ports()
+        available_ports = self.serial_port.get_available_ports()
         if available_ports:
             self.port.set(available_ports[0])
 
@@ -94,8 +93,10 @@ class SerialMonitorGUI:
         ttk.Label(settings_frame, text="Порт:").grid(row=0, column=0, sticky="w")
         self.port_combobox = ttk.Combobox(settings_frame, textvariable=self.port, width=8)
         self.port_combobox.grid(row=0, column=1, padx=5)
-        self.port_combobox['values'] = self.get_available_ports()  # Устанавливаем список портов
-        self.port_combobox.state(['readonly'])  # Только выбор из списка
+        # Устанавливаем список портов
+        self.port_combobox['values'] = self.serial_port.get_available_ports()
+        # Только выбор из списка
+        self.port_combobox.state(['readonly'])
 
         # Кнопка обновить список портов
         self.refresh_ports_button = ttk.Button(settings_frame, text=u'\u21bb', command=self.refresh_ports, width=4)
@@ -169,7 +170,7 @@ class SerialMonitorGUI:
         scrollbar.grid(row=0, column=1, sticky="ns")
 
         # Инициализируем данные таблицы
-        for i in range(33):
+        for i in range(32):
             self.counter_table.insert("", "end", values=(i, 0, 0, 0))
 
         # Добавим счетчик для пользовательского шаблона
@@ -189,15 +190,13 @@ class SerialMonitorGUI:
                         command=self.update_column_width_based_on_encoding).grid(row=0, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX",
                         command=self.update_column_width_based_on_encoding).grid(row=1, column=0, sticky="w")
-        ttk.Radiobutton(encoding_frame, text="BIN", variable=self.encoding, value="BIN",
-                        command=self.update_column_width_based_on_encoding).grid(row=2, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII",
                         command=self.update_column_width_based_on_encoding).grid(row=3, column=0, sticky="w")
 
         tree_frame = ttk.Frame(stretchable_frame)
         tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
 
-        # Create Treeview
+        # Таблица вывода данных
         self.tree = ttk.Treeview(tree_frame, columns=("time", "raw_data", "len", "pnum",
                                                       "direction", "packet_type", "decoded_data"), show="headings")
         self.tree.heading("time", text="Время")
@@ -208,22 +207,22 @@ class SerialMonitorGUI:
         self.tree.heading("packet_type", text="Заголовок")
         self.tree.heading("decoded_data", text="Расшифрованные данные")
 
-        # Add vertical scrollbar
+        # Вертикальный скроллбар
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
 
-        # Grid layout
+        # Сетка таблицы вывода данных
         self.tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
-        # Configure grid weights
+        # Веса сетки таблицы вывода данных
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
 
-        # Add copy functionality
+        # Создание функционала копирования данных из таблицы по хоткею
         self.tree.bind('<Control-c>', self.copy_selection)
 
-        # Text widget для вывода строковых сообщений
+        # Текстовая строка для вывода сообщений
         message_frame = ttk.Frame(stretchable_frame)
         message_frame.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="sew")
         scrollbar_message = ttk.Scrollbar(message_frame)
@@ -325,7 +324,7 @@ class SerialMonitorGUI:
                 # Запускаем поток логера
                 self.file_logger.start_logger()
                 self.update_message_area(f"Порт {self.port.get()} открыт.")
-        except serial.SerialException as e:
+        except Exception as e:
             self.update_message_area(f"Ошибка открытия порта: {e}")
             return
 
@@ -340,15 +339,9 @@ class SerialMonitorGUI:
         except Exception as e:
             self.update_message_area(f"Ошибка закрытия порта: {e}")
 
-    # Получение списка активных портов
-    def get_available_ports(self):
-        """Возвращает список доступных COM-портов."""
-        ports = serial.tools.list_ports.comports()
-        return [port.device for port in ports]
-
     def refresh_ports(self):
         """Обновляет список доступных COM-портов."""
-        available_ports = self.get_available_ports()
+        available_ports = self.serial_port.get_available_ports()
         self.port_combobox['values'] = available_ports
         if available_ports:
             self.port_combobox.current(0)  # Устанавливаем первый порт как выбранный
