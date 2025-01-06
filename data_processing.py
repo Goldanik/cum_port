@@ -545,8 +545,8 @@ class DataProcessing:
             if packet:
                 try:
                     # Отправка данных в лог
-                    self.logger_queue.put(f"{self.timestamp}  {packet}  {packet_len}  {packet_num}  "
-                                          f"{direction}  {packet_type+decoded_flags}  {decode}")
+                    self.logger_queue.put(f"{self.timestamp}  {decode}  {packet_len}  {packet_num}  "
+                                          f"{direction}  {packet_type+decoded_flags}  {packet}")
                 except queue.Full:
                     self.main_gui.update_message_area(f"Очередь лога заполнена")
                 try:

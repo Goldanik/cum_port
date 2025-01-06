@@ -71,9 +71,29 @@ class SerialMonitorGUI:
         # Размер таблицы на экране
         self.MAX_TABLE_SIZE = 50000
 
+        # Переменные для состояния галочек видимости столбцов
+        self.column_visibility = {}
+
+        # Список столбцов таблицы
+        self.columns = [
+            #colimn_id          column_name                 column_width
+            ("time",            "Время",                    100),
+            ("raw_data",        "Сырые данные",             100),
+            ("len",             "Длина",                    50),
+            ("pnum",            "Pnum",                     50),
+            ("direction",       "Направление",              220),
+            ("packet_type",     "Заголовок",                150),
+            ("decoded_data",    "Расшифрованные данные",    200)
+        ]
+
+        # Создание соответствия между идентификаторами столбцов и их названиями
+        self.column_names = {col[0]: col[1] for col in self.columns}
+
+        # Создание соответствия между идентификаторами столбцов и их шириной
+        self.column_widths = {col[0]: col[2] for col in self.columns}
+
         # Создание элементов интерфейса
         self.create_widgets()
-        self.update_column_width_based_on_encoding()
 
     def create_widgets(self):
         """Создание графического окна"""
@@ -187,37 +207,49 @@ class SerialMonitorGUI:
 
         # Кнопки выбора кодировок
         ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2",
-                        command=self.update_column_width_based_on_encoding).grid(row=0, column=0, sticky="w")
+                        command=self.update_columns_on_encoding).grid(row=0, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX",
-                        command=self.update_column_width_based_on_encoding).grid(row=1, column=0, sticky="w")
+                        command=self.update_columns_on_encoding).grid(row=1, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII",
-                        command=self.update_column_width_based_on_encoding).grid(row=3, column=0, sticky="w")
+                        command=self.update_columns_on_encoding).grid(row=3, column=0, sticky="w")
 
         tree_frame = ttk.Frame(stretchable_frame)
         tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
 
+        # Добавляем фрейм для галочек над таблицей
+        column_options_frame = ttk.Frame(tree_frame)
+        column_options_frame.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="w")
+
+        # Заголовок для строки с галочками
+        ttk.Label(column_options_frame, text="Отображать столбцы:").pack(side=tk.LEFT, padx=(0, 10))
+
+        # Заполняем заголовки галочек видимости
+        for column_id, column_name, column_width in self.columns:
+            # По умолчанию все столбцы видимы
+            var = tk.BooleanVar(value=True)
+            cb = ttk.Checkbutton(column_options_frame, text=column_name, variable=var,
+                                 command=lambda col=column_id: self.toggle_column_visibility(col))
+            cb.pack(side=tk.LEFT, padx=5)
+            self.column_visibility[column_id] = var
+
         # Таблица вывода данных
-        self.tree = ttk.Treeview(tree_frame, columns=("time", "raw_data", "len", "pnum",
-                                                      "direction", "packet_type", "decoded_data"), show="headings")
-        self.tree.heading("time", text="Время")
-        self.tree.heading("raw_data", text="Сырые данные")
-        self.tree.heading("len", text="Длина")
-        self.tree.heading("pnum", text="Pnum")
-        self.tree.heading("direction", text="Направление")
-        self.tree.heading("packet_type", text="Заголовок")
-        self.tree.heading("decoded_data", text="Расшифрованные данные")
+        self.tree = ttk.Treeview(tree_frame, columns=[col[0] for col in self.columns], show="headings")
+        # Заполняем заголовки и ширину столбцов
+        for column_id, column_name, column_width in self.columns:
+            self.tree.heading(column_id, text=column_name)
+            self.tree.column(column_id, width=column_width, stretch=False)
 
         # Вертикальный скроллбар
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
 
         # Сетка таблицы вывода данных
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
+        self.tree.grid(row=1, column=0, sticky="nsew")
+        vsb.grid(row=1, column=1, sticky="ns")
 
         # Веса сетки таблицы вывода данных
         tree_frame.grid_columnconfigure(0, weight=1)
-        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(1, weight=1)
 
         # Создание функционала копирования данных из таблицы по хоткею
         self.tree.bind('<Control-c>', self.copy_selection)
@@ -280,24 +312,35 @@ class SerialMonitorGUI:
         except Exception as e:
             self.update_message_area(f"Ошибка при чтении файла: {e}")
 
-    def update_column_width_based_on_encoding(self):
-        """Обновляет ширину столбцов в таблице данных в зависимости от выбранной кодировки."""
-        if self.encoding.get() == "O2":
-            self.tree.column("time", width=100, stretch=False, anchor="center")
-            self.tree.column("raw_data", width=100)
-            self.tree.column("len", width=50, stretch=False, anchor="center")
-            self.tree.column("pnum", width=50, stretch=False, anchor="center")
-            self.tree.column("direction", width=220, stretch=False)
-            self.tree.column("packet_type", width=150)
-            self.tree.column("decoded_data", width=100)
+    def toggle_column_visibility(self, column_id):
+        """Переключает видимость столбца в зависимости от состояния галочки."""
+        # Если галочка установлена
+        if self.column_visibility[column_id].get():
+            # Восстанавливаем заголовок столбца из словаря column_names
+            self.tree.heading(column_id, text=self.column_names[column_id])
+            # Восстанавливаем ширину столбца из словаря column_widths
+            self.tree.column(column_id, width=self.column_widths[column_id], stretch=False)
+        # Если галочка снята
         else:
+            self.tree.column(column_id, width=0)  # Скрыть столбец
+            self.tree.heading(column_id, text="")  # Очистить заголовок столбца
+            self.tree.column(column_id, stretch=False)  # Убедитесь, что столбец не растягивается
+
+    def update_columns_on_encoding(self):
+        """Отключает столбцы и меняет их ширину в таблице данных в зависимости от выбранной кодировки."""
+        if self.encoding.get() == "O2":
+            # В кодировке о2 включаем все столбцы со стандартной заданной шириной
+            for column_id, column_name, column_width in self.columns:
+                self.tree.column(column_id, width=column_width, stretch=False)
+                self.column_visibility[column_id].set(True)
+                self.toggle_column_visibility(column_id)
+        else:
+            # Для кодировок ASCI и HEX выключаем все столбцы кроме времени и сырых данных
             self.tree.column("time", width=100, stretch=False, anchor="center")
-            self.tree.column("raw_data", width=500)
-            self.tree.column("len", width=40)
-            self.tree.column("pnum", width=40)
-            self.tree.column("direction", width=40)
-            self.tree.column("packet_type", width=40)
-            self.tree.column("decoded_data", width=40)
+            self.tree.column("raw_data", width=600)
+            for column_id, column_name, column_width in self.columns[2:]:
+                self.column_visibility[column_id].set(False)
+                self.toggle_column_visibility(column_id)
 
     def attempt_open_port(self):
         """Открытие последовательного порта"""
