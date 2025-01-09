@@ -110,48 +110,35 @@ class DataProcessing:
                     else:
                         try:
                             additional_buffer = self.data_proc_queue.get(timeout=1)
-                            decoded_data += additional_buffer.hex()
-                            self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                            continue
                         except queue.Empty:
                             continue
-                    if packet:
-                        try:
-                            self.logger_queue.put(f"{self.timestamp}  {packet}  ")
-                            # Обновляем GUI
-                            self.main_gui.update_data_area(f"{self.timestamp}  {packet}  ")
-                        except queue.Full:
-                            self.main_gui.update_message_area(f"Очередь заполнена")
+                        decoded_data += additional_buffer.hex()
+                        continue
+                    self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                    self.update_gui_and_log(packet, "", "", "", "", "")
             elif encoding == "ASCII":
                 try:
                     while current_buffer and not self.data_process_event.is_set():
                         end = current_buffer.find(b"\x0a", 0)
                         #self.main_gui.update_message_area(f"Данные на парсинг: {len(decoded_data)}, {decoded_data}, {end}")
                         if end == -1 or end == 0:
-                            if len(current_buffer) > 200:
+                            if len(current_buffer) > self.unparsed_encoding_data_size:
                                 # Берём данные фиксированной длины
-                                packet = current_buffer[:200].decode("ascii", errors="ignore")
-                                current_buffer = current_buffer[200:]
-                                self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                                packet = current_buffer[:self.unparsed_encoding_data_size].decode("ascii", errors="ignore")
+                                current_buffer = current_buffer[self.unparsed_encoding_data_size:]
                             else:
                                 try:
                                     additional_buffer = self.data_proc_queue.get(timeout=1)
                                 except queue.Empty:
                                     continue  # Если нет данных, продолжаем ожидание
                                 current_buffer += additional_buffer
-                                self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
                                 continue
                         else:
                             # Берём данные до следующего маркера с исключением \n
                             packet = current_buffer[:end-1].decode("ascii", errors="ignore")
                             current_buffer = current_buffer[end+1:]
-                        if packet:
-                            try:
-                                self.logger_queue.put(f"{self.timestamp}  {packet}  ")
-                                # Обновляем GUI
-                                self.main_gui.update_data_area(f"{self.timestamp}  {packet}  ")
-                            except queue.Full:
-                                self.main_gui.update_message_area(f"Очередь заполнена")
+                        self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                        self.update_gui_and_log(packet,"","","","","")
                 except UnicodeDecodeError:
                     self.main_gui.update_message_area(f"Некорректный символ")
 
@@ -385,8 +372,11 @@ class DataProcessing:
         """Отправка данных на экран и в лог-файл"""
         try:
             # Отправка данных в лог
-            self.logger_queue.put(f"{self.timestamp}  {decode}  {packet_len}  {packet_num}  "
-                                  f"{direction}  {packet_type_flags}  {packet}")
+            if not (decode and packet_len and packet_num and direction and packet_type_flags):
+                self.logger_queue.put(f"{self.timestamp}  {packet}")
+            else:
+                self.logger_queue.put(f"{self.timestamp}  {decode}  {packet_len}  {packet_num}  "
+                                    f"{direction}  {packet_type_flags}  {packet}")
         except queue.Full:
             self.main_gui.update_message_area(f"Очередь лога заполнена")
         try:

@@ -38,7 +38,7 @@ class SerialMonitorGUI:
         self.log_queue = logger_queue
         self.data_queue = data_proc_queue
         # Передаем тот же экземпляр GUI в другие компоненты
-        self.serial_port = serial_port.SerialPort(data_proc_queue=data_queue, main_gui=self)
+        self.serial_port = serial_port.SerialPort(data_queue, on_error=self.update_message_area)
         self.data_proc = data_processing.DataProcessing(data_proc_queue=data_queue, logger_queue=log_queue, main_gui=self)
         self.file_logger = file_logger.FileLogger(log_queue=log_queue, main_gui=self)
 
@@ -360,43 +360,37 @@ class SerialMonitorGUI:
 
     def attempt_open_port(self):
         """Открытие последовательного порта"""
-        try:
-            # Закрываем порт, если он уже открыт
-            if self.serial_port.ser and self.serial_port.ser.is_open:
-                self.serial_port.close_port()
-                self.data_proc.stop_data_processing()
-                self.file_logger.stop_logger()
-            # Открываем порт с заданными параметрами
-            self.serial_port.open_port(
-                port=self.port.get(),
-                baudrate=self.baud_rate.get(),
-                bytesize=self.databits.get(),
-                parity=self.parity.get(),
-                stopbits=self.stop_bits.get(),
-                timeout=0.01  # Timeout для чтения данных (1 секунда)
-            )
-
-            if self.serial_port.ser.is_open:
-                self.open_button.config(text="Закрыть порт", command=self.attempt_close_port)
-                # Запускаем поток обработчика
-                self.data_proc.start_data_processing()
-                # Запускаем поток логера
-                self.file_logger.start_logger()
-                self.update_message_area(f"Порт {self.port.get()} открыт.")
-        except Exception as e:
-            self.update_message_area(f"Ошибка открытия порта: {e}")
-            return
-
-    def attempt_close_port(self):
-        """Закрытие последовательного порта"""
-        try:
+        # Закрываем порт, если он уже открыт
+        if self.serial_port.is_open:
             self.serial_port.close_port()
             self.data_proc.stop_data_processing()
             self.file_logger.stop_logger()
-            self.open_button.config(text="Открыть порт", command=self.attempt_open_port)
-            self.update_message_area("Порт закрыт.")
-        except Exception as e:
-            self.update_message_area(f"Ошибка закрытия порта: {e}")
+        # Открываем порт с заданными параметрами
+        self.serial_port.open_port(
+            port=self.port.get(),
+            baudrate=self.baud_rate.get(),
+            bytesize=self.databits.get(),
+            parity=self.parity.get(),
+            stopbits=self.stop_bits.get(),
+            timeout=0.01  # Timeout для чтения данных (1 секунда)
+        )
+
+        if self.serial_port.is_open:
+            self.open_button.config(text="Закрыть порт", command=self.attempt_close_port)
+            # Запускаем поток обработчика
+            self.data_proc.start_data_processing()
+            # Запускаем поток логера
+            self.file_logger.start_logger()
+            self.update_message_area(f"Порт {self.port.get()} открыт.")
+        return
+
+    def attempt_close_port(self):
+        """Закрытие последовательного порта"""
+        self.serial_port.close_port()
+        self.data_proc.stop_data_processing()
+        self.file_logger.stop_logger()
+        self.open_button.config(text="Открыть порт", command=self.attempt_open_port)
+        self.update_message_area("Порт закрыт.")
 
     def refresh_ports(self):
         """Обновляет список доступных COM-портов."""
@@ -514,7 +508,7 @@ class SerialMonitorGUI:
                 accumulated_message_data.append(data)
             elif msg_type == 'text':
                 accumulated_text_data.append(data)
-        if (self.serial_port.ser and self.serial_port.ser.is_open) or self.file_open:
+        if self.serial_port.is_open or self.file_open:
             # Обновляем GUI с накопленными данными
             if accumulated_message_data:
                 self._update_message_area("\n".join(accumulated_message_data))
@@ -545,9 +539,10 @@ main.mainloop()
 
 # Сборка
 # pyinstaller --onefile -w cum_port.py
+
 # Отладка
 # py -m cProfile -o profile_output.prof cum_port.py
 # snakeviz profile_output.prof
-# py -m line_profiler cum_port.py.lprof
+
 # kernprof -l cum_port.py
 # py -m line_profiler cum_port.py.lprof
