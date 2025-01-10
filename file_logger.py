@@ -4,84 +4,117 @@ import threading
 import datetime
 
 class FileLogger:
-    def __init__(self, log_queue, main_gui):
-        self.log_file_name = "log_"
-        self.log_file_format= ".txt"
+    """
+    Класс для управления файловым логированием.
+    Отвечает за создание лог-файлов, буферизированную запись данных
+    и управление потоком логирования.
+    """
 
-        self.folder_path = 'logs'
-        if not os.path.exists(self.folder_path):
-            os.makedirs(self.folder_path)
+    def __init__(self, data_queue: queue.Queue, on_error=None):
+        """Инициализация объекта FileLogger."""
+        # Основные компоненты
+        self._data_queue = data_queue
+        self._on_error = on_error
 
-        # Поток логера
-        self.log_queue = log_queue
-        self.log_thread = None
-        self.log_stop_event = threading.Event()
+        # Управление потоком
+        self._log_thread = None
+        self._stop_event = threading.Event()
 
-        # Интерфейс пользователя
-        self.main_gui = main_gui
+        # Настройки буфера
+        self._buffer = []
+        self._buffer_size = 10
 
-        self.buffer = []
-        self.buffer_size = 10
+        # Параметры файла лога
+        self._folder_path = 'logs'
+        self._file_prefix = 'log_'
+        self._file_extension = '.txt'
+        self._timestamp = ''
+        self._current_log_path = ''
 
-        self.timestamp = ""
+        # Создаем директорию для логов при инициализации
+        self._ensure_log_directory()
 
-    def start_logger(self):
-        """Запускаем поток для записи лога"""
-        self.timestamp = datetime.datetime.now().strftime("%H_%M_%S")
-        # Проверяем что файл можно открыть
+    def _ensure_log_directory(self):
+        """Создает директорию для логов, если она не существует."""
+        if not os.path.exists(self._folder_path):
+            os.makedirs(self._folder_path)
+
+    @property
+    def is_running(self) -> bool:
+        """Проверяет, активен ли поток логирования."""
+        return bool(self._log_thread and self._log_thread.is_alive())
+
+    def start(self):
+        """Запускает поток логирования."""
+        # Проверяем, не запущен ли уже поток
+        if self.is_running:
+            self._handle_error("Поток логирования уже запущен.")
+            return
+
+        # Создаем метку времени и путь к файлу
+        self._timestamp = datetime.datetime.now().strftime("%H_%M_%S")
+        self._current_log_path = os.path.join(
+            self._folder_path,
+            f"{self._file_prefix}{self._timestamp}{self._file_extension}"
+        )
+
         try:
-            with open(os.path.join(self.folder_path,self.log_file_name+self.timestamp+self.log_file_format), "a", encoding="utf-8", buffering=1):
-                pass  # Проверяем, что файл доступен для записи
-            self.main_gui.update_message_area(f"Файл лога - {self.log_file_name+self.timestamp+self.log_file_format} создан в папке {self.folder_path}")
-        except Exception as e:
-            self.main_gui.update_message_area(f"Ошибка открытия файла лога: {e}")
-            return
-        # Проверяем что поток был остановлен перед повторным открытием
-        if self.log_thread and self.log_thread.is_alive():
-            self.main_gui.update_message_area("Поток записи уже запущен.")
-            return
+            # Проверяем возможность записи в файл
+            with open(self._current_log_path, "a", encoding="utf-8"):
+                pass
+            self._handle_error(f"Создан файл лога: {self._current_log_path}")
+        except IOError as e:
+            self._handle_error(f"Ошибка создания файла лога: {e}")
+            raise
 
-        self.log_stop_event.clear()
-        self.log_thread = threading.Thread(target=self.log_data_to_file, daemon=True)
-        self.log_thread.start()
+        # Запускаем поток логирования
+        self._stop_event.clear()
+        self._log_thread = threading.Thread(target=self._logging_worker, daemon=True)
+        self._log_thread.start()
 
-    def stop_logger(self):
-        """Останавливаем поток записи лога"""
-        self.log_stop_event.set()
+    def stop(self):
+        """Останавливает поток логирования и сбрасывает оставшийся буфер."""
+        self._stop_event.set()
 
-        if self.log_thread and self.log_thread.is_alive():
-            self.log_thread.join(timeout=1.0)
+        # Ждем завершения потока
+        if self._log_thread and self._log_thread.is_alive():
+            self._log_thread.join(timeout=1.0)
 
-        self.log_queue.queue.clear()
+        # Записываем оставшиеся данные
+        self._flush_buffer()
+        self._data_queue.queue.clear()
 
-    def log_data_to_file(self):
-        """Фоновый поток для записи лога"""
-        while not self.log_stop_event.is_set():
+    def _logging_worker(self):
+        """Фоновый поток для обработки и записи данных лога."""
+        while not self._stop_event.is_set():
             try:
-                # Пытаемся получить данные из очереди
-                data = self.log_queue.get(timeout=1)
-                # Добавляем данные в буфер
-                self.buffer.append(data + "\n")
-                # Проверяем размер буфера
-                if len(self.buffer) >= self.buffer_size:
-                    # Если буфер заполнен, записываем все в файл
-                    try:
-                        with open(os.path.join(self.folder_path,self.log_file_name+self.timestamp+self.log_file_format),
-                                  "a", encoding="utf-8", buffering=1) as log_file:
-                            log_file.writelines(self.buffer)
-                            self.buffer = []
-                    except Exception as e:
-                        self.main_gui.update_message_area(f"Ошибка записи лога: {e}")
+                # Получаем данные из очереди
+                data = self._data_queue.get(timeout=1)
+                self._buffer.append(data + "\n")
+
+                # Проверяем необходимость сброса буфера
+                if len(self._buffer) >= self._buffer_size:
+                    self._flush_buffer()
+
             except queue.Empty:
-                # Если нет данных, продолжаем ожидание
                 continue
-        # Записываем оставшиеся данные из буфера после остановки потока
-        if self.buffer:
-            try:
-                with open(os.path.join(self.folder_path, self.log_file_name + self.timestamp + self.log_file_format),
-                          "a", encoding="utf-8", buffering=1) as log_file:
-                     log_file.writelines(self.buffer)
-            except Exception as e:
-                self.main_gui.update_message_area(f"Ошибка записи лога: {e}")
 
+    def _flush_buffer(self):
+        """Записывает буферизированные данные в файл лога."""
+        if not self._buffer:
+            return
 
+        try:
+            # Записываем данные из буфера в файл
+            with open(self._current_log_path, "a", encoding="utf-8", buffering=1) as log_file:
+                log_file.writelines(self._buffer)
+            self._buffer.clear()
+        except IOError as e:
+            self._handle_error(f"Ошибка записи в файл лога: {e}")
+
+    def _handle_error(self, message: str):
+        """Обрабатывает статусные сообщения через callback или выводит в консоль."""
+        if self._on_error:
+            self._on_error(message)
+        else:
+            print(message)

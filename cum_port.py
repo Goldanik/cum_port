@@ -40,7 +40,7 @@ class SerialMonitorGUI:
         # Передаем тот же экземпляр GUI в другие компоненты
         self.serial_port = serial_port.SerialPort(data_queue, on_error=self.update_message_area)
         self.data_proc = data_processing.DataProcessing(data_proc_queue=data_queue, logger_queue=log_queue, main_gui=self)
-        self.file_logger = file_logger.FileLogger(log_queue=log_queue, main_gui=self)
+        self.file_logger = file_logger.FileLogger(log_queue, on_error=self.update_message_area)
 
         # Переменные для настроек COM-порта
         self.port = tk.StringVar()
@@ -364,7 +364,7 @@ class SerialMonitorGUI:
         if self.serial_port.is_open:
             self.serial_port.close_port()
             self.data_proc.stop_data_processing()
-            self.file_logger.stop_logger()
+            self.file_logger.stop()
         # Открываем порт с заданными параметрами
         self.serial_port.open_port(
             port=self.port.get(),
@@ -372,7 +372,7 @@ class SerialMonitorGUI:
             bytesize=self.databits.get(),
             parity=self.parity.get(),
             stopbits=self.stop_bits.get(),
-            timeout=0.01  # Timeout для чтения данных (1 секунда)
+            timeout=0.1
         )
 
         if self.serial_port.is_open:
@@ -380,7 +380,7 @@ class SerialMonitorGUI:
             # Запускаем поток обработчика
             self.data_proc.start_data_processing()
             # Запускаем поток логера
-            self.file_logger.start_logger()
+            self.file_logger.start()
             self.update_message_area(f"Порт {self.port.get()} открыт.")
         return
 
@@ -388,7 +388,7 @@ class SerialMonitorGUI:
         """Закрытие последовательного порта"""
         self.serial_port.close_port()
         self.data_proc.stop_data_processing()
-        self.file_logger.stop_logger()
+        self.file_logger.stop()
         self.open_button.config(text="Открыть порт", command=self.attempt_open_port)
         self.update_message_area("Порт закрыт.")
 
@@ -486,7 +486,7 @@ class SerialMonitorGUI:
             direction = parts[4]
             packet_type = parts[5]
             decoded_data = parts[6]
-        elif len(parts) == 3:
+        elif len(parts) == 2:
             timestamp = parts[0]
             raw_data = parts[1]
 

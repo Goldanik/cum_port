@@ -154,7 +154,7 @@ class DataProcessing:
                     # Пытаемся получить данные из очереди
                     additional_buffer = self.data_proc_queue.get(timeout=0.1)
                 except queue.Empty:
-                    print("Очередь пуста")
+                    # print("Очередь пуста")
                     # Если нет данных, продолжаем ожидание
                     continue
                 # Получили новую порцию данных, добавляем ее к существующим данным
@@ -375,13 +375,16 @@ class DataProcessing:
             if not (decode and packet_len and packet_num and direction and packet_type_flags):
                 self.logger_queue.put(f"{self.timestamp}  {packet}")
             else:
-                self.logger_queue.put(f"{self.timestamp}  {decode}  {packet_len}  {packet_num}  "
-                                    f"{direction}  {packet_type_flags}  {packet}")
+                self.logger_queue.put(f"{self.timestamp}  {packet}  {packet_len}  {packet_num}  {direction}  "
+                                    f"{packet_type_flags}  {decode}")
         except queue.Full:
             self.main_gui.update_message_area(f"Очередь лога заполнена")
         try:
             # Обновляем GUI
-            self.main_gui.update_data_area(f"{self.timestamp}@{packet}@{packet_len}"
+            if not (decode and packet_len and packet_num and direction and packet_type_flags):
+                self.main_gui.update_data_area(f"{self.timestamp}@{packet}")
+            else:
+                self.main_gui.update_data_area(f"{self.timestamp}@{packet}@{packet_len}"
                                            f"@{packet_num}@{direction}@{packet_type_flags}@{decode}")
         except queue.Full:
             self.main_gui.update_message_area(f"Очередь гуи заполнена")
