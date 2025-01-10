@@ -56,8 +56,8 @@ class DataProcessing:
         # Счетчик для пользовательского фильтра
         self.counter_custom = 0
 
-        # Длина обрезки не шифрованных кодировок (ASCII и HEX)
-        self.unparsed_encoding_data_size = 150
+        # Длина в байтах обрезки не шифрованных кодировок (ASCII и HEX)
+        self.unparsed_encoding_data_size = 100
 
         # Переменная для хранения отметки времени
         self.timestamp = ""
@@ -100,19 +100,17 @@ class DataProcessing:
                 # Передаем данные напрямую в парсер
                 self.orion2_parser(current_buffer)
             elif encoding == "HEX":
-                decoded_data = current_buffer.hex()
-                while decoded_data and not self.data_process_event.is_set():
-                    if len(decoded_data) > self.unparsed_encoding_data_size:
+                while current_buffer and not self.data_process_event.is_set():
+                    if len(current_buffer) > self.unparsed_encoding_data_size:
                         # Берём данные фиксированной длины
-                        packet = decoded_data[:self.unparsed_encoding_data_size]
-                        decoded_data = decoded_data[self.unparsed_encoding_data_size:]
-                        self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                        packet = current_buffer[:self.unparsed_encoding_data_size].hex()
+                        current_buffer = current_buffer[self.unparsed_encoding_data_size:]
                     else:
                         try:
                             additional_buffer = self.data_proc_queue.get(timeout=1)
                         except queue.Empty:
                             continue
-                        decoded_data += additional_buffer.hex()
+                        current_buffer += additional_buffer
                         continue
                     self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
                     self.update_gui_and_log(packet, "", "", "", "", "")
