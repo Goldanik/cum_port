@@ -64,7 +64,7 @@ class SerialMonitorGUI:
         self.gui.title("CUM-port")
         self.gui.geometry("1270x750")
         self.gui.minsize(1270,750)
-        self.version = "Версия: 1.0"
+        self.version = "Версия: 1.01"
 
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()

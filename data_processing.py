@@ -3,6 +3,38 @@ import queue
 import threading
 from Crypto.Cipher import AES
 
+"""
+def calc_crc16(old_crc, in_byte):
+    # Вычисляет CRC16 для одного байта данных, используя порождающий полином 0x1021.
+    # XOR входного байта с младшим байтом текущего CRC
+    crc = old_crc ^ in_byte
+    # Выполняем 8 итераций (по количеству битов в байте)
+    for _ in range(8):
+        # Если старший бит установлен, применяем порождающий полином
+        if crc & 0x0001:
+            crc = (crc >> 1) ^ 0x8408  # Полином в обратном порядке (0x1021 -> 0x8408)
+        else:
+            crc >>= 1
+    return crc
+
+def calculate_crc16(data):
+    # Вычисляет контрольную сумму CRC16 для массива данных.
+    crc = 0xFFFF  # начальное значение CRC
+    for byte in data:
+        crc = calc_crc16(crc, byte)
+    return crc
+
+# Пример использования
+hex_string = "2913f605666666bc1800676767bc180089d129fa44d81babe849ba37288b04f602cdb728fa9784"
+expected_crc16 = "3343"
+data = bytes.fromhex(hex_string)
+crc16_result = calculate_crc16(data)
+low_byte = crc16_result & 0xFF
+high_byte = (crc16_result >> 8) & 0xFF
+# Вывод результата
+print(f"CRC16 (младший байт вперед): {low_byte:02X}{high_byte:02X}")
+"""
+
 class DataProcessing:
     def __init__(self, data_proc_queue, logger_queue, main_gui):
         # Поток обработки данных
@@ -98,7 +130,7 @@ class DataProcessing:
             # Значение по умолчанию
             if encoding == "O2":
                 # Передаем данные напрямую в парсер
-                self.orion2_parser(current_buffer)
+                self._orion2_parser(current_buffer)
             elif encoding == "HEX":
                 while current_buffer and not self.data_process_event.is_set():
                     if len(current_buffer) > self.unparsed_encoding_data_size:
@@ -141,7 +173,7 @@ class DataProcessing:
                     self.main_gui.update_message_area(f"Некорректный символ")
 
     #@profile
-    def orion2_parser(self, data_bytes):
+    def _orion2_parser(self, data_bytes):
         """Парсер для кодировки Orion2."""
         while data_bytes and not self.data_process_event.is_set():
             # Ищем начало следующего пакета 'ff'
@@ -161,7 +193,7 @@ class DataProcessing:
             # Нашли начало пакета
             else:
                 # Формируем пакет из данных в буфере до следующего маркера
-                packet = data_bytes[:next_ff].hex()
+                packet = data_bytes[:next_ff]
                 # Вырезаем пакет из буфера
                 data_bytes = data_bytes[next_ff:]
 
@@ -175,13 +207,21 @@ class DataProcessing:
             was_req = False
             data_encrypt = False
             encrypted_work_key = False
+            dont_decode = False
             overall_len = 0
 
-            # Если длина пакета больше 4 и пакет начинается на ff
-            if (len(packet) > 4) and packet.startswith('ff'):
+            # Если длина пакета больше 2 байт и пакет начинается на ff
+            bytes_length = len(packet)
+            bytes_first = bytes([packet[0]])
+            if not ((bytes_length > 2) and (bytes_first == b"\xff")):
+                decode = "Ошибка, пакет не целый"
+            else:
                 # Заменяем в пакете подмененные при передаче байты
-                packet = packet.replace("fe01", "ff").replace("fe02", "fe")
-                # raw_packet = packet
+                packet = packet.replace(b'\xFE\x01', b'\xFF').replace(b'\xFE\x02', b'\xFE')
+                packet = packet.hex()
+                raw_packet = packet
+                # packet_header_type = bytes([packet[2]])
+                # packet_header_ack_type = bytes([packet[4]])
 
                 # Парсинг заголовка пакета.
                 # Получаем адрес абонента
@@ -258,111 +298,129 @@ class DataProcessing:
                     len_byte = str(packet[:2])
                     if len_byte:
                         overall_len = int(len_byte, 16)
-                        packet_len = overall_len
-                    # Парсинг типа пакета
-                    packet_type_byte = str(packet[3:4])
-                    if packet_type_byte:
-                        packet_type_int = int(packet_type_byte, 16)
-                        packet_type = self.packet_types[packet_type_int]
-                    # Парсинг номера пакета
-                    packet_num_byte = str(packet[6:8])
-                    if packet_num_byte:
-                        packet_num = int(packet_num_byte, 16)
-                    packet_flags = str(packet[4:6])
-                    if packet_flags:
-                        # Парсинг флагов содержимого пакета
-                        decoded_flags = self.decode_flags(int(packet_flags, 16))
-                    # Если присутствует флаг SMode значит пакет зашифрован
-                    data_encrypt = "SMode" in decoded_flags
-                    # Если присутствует флаг WKey значит пакет зашифрован рабочим ключом
-                    encrypted_work_key = "WKey" in decoded_flags
-                    # Если шифрован, но не рабочим ключом, вставляем флаг мастер ключа
-                    if data_encrypt and not encrypted_work_key:
-                        decoded_flags = decoded_flags[:len(decoded_flags)-6] + ":MKey:SMode"
-                    # Обрезка основной части заголовка
-                    packet = packet[8:]
-                    # Парсинг и обрезка идентификаторов
-                    count = 0
-                    source = 0
-                    destination = 0
+                        # Если фактическая длина пакета не совпадает с указанной в заголовке
+                        if overall_len != len(packet)/2:
+                            decode = "Ошибка, пакет не целый"
+                            packet = raw_packet
+                            dont_decode = True
+                        else:
+                            packet_len = overall_len
+                            # Парсинг типа пакета
+                            packet_type_byte = str(packet[3:4])
+                            if packet_type_byte:
+                                packet_type_int = int(packet_type_byte, 16)
+                                packet_type = self.packet_types[packet_type_int]
+                            # Парсинг номера пакета
+                            packet_num_byte = str(packet[6:8])
+                            if packet_num_byte:
+                                packet_num = int(packet_num_byte, 16)
+                            packet_flags = str(packet[4:6])
+                            if packet_flags:
+                                # Парсинг флагов содержимого пакета
+                                decoded_flags = self._decode_flags(int(packet_flags, 16))
+                            # Если присутствует флаг SMode значит пакет зашифрован
+                            data_encrypt = "SMode" in decoded_flags
+                            # Если присутствует флаг WKey значит пакет зашифрован рабочим ключом
+                            encrypted_work_key = "WKey" in decoded_flags
+                            # Если шифрован, но не рабочим ключом, вставляем флаг мастер ключа
+                            if data_encrypt and not encrypted_work_key:
+                                decoded_flags = decoded_flags[:len(decoded_flags)-6] + ":MKey:SMode"
+                            # Обрезка основной части заголовка
+                            packet = packet[8:]
+                            # Парсинг и обрезка идентификаторов
+                            count = 0
+                            source = 0
+                            destination = 0
 
-                    # Конвертируем маки в читаемый вид литл-индиан в биг-индиан
-                    def convert_mac(mac_little):
-                        """Конвертирует MAC-адрес из little-endian в big-endian формат."""
-                        if mac_little != "00:00:00:00:00:00":
-                            pairs = [mac_little[i:i + 2] for i in range(0, 12, 2)]
-                            mac_convert = ":".join(reversed(pairs))
-                            return mac_convert
-                        return mac_little
-
-                    for item in self.give_addr:
-                        # Ищем в пакете мак адреса (ид) приборов, сохраненные из пакетов GIVEADDR в список give_addr
-                        if item:
-                            start_index = packet.find(item)
-                            if start_index >= 0:
-                                if start_index == 0:
-                                    self.mac[0] = item
-                                    source = count
-                                else:
-                                    self.mac[1] = item
-                                    destination = count
-                            if not self.main_gui.mac_addr[count]:
-                                self.main_gui.mac_addr[count] = convert_mac(item)
-                        count += 1
-                    # Обрезаем идентификаторы из тела пакета
-                    packet = packet.replace(self.mac[0], "").replace(self.mac[1], "")
-                    direction += "  " + self.main_gui.mac_addr[source] + "-" + self.main_gui.mac_addr[destination]
+                            for item in self.give_addr:
+                                # Ищем в пакете мак адреса (ид) приборов, сохраненные из пакетов GIVEADDR в список give_addr
+                                if item:
+                                    start_index = packet.find(item)
+                                    if start_index >= 0:
+                                        if start_index == 0:
+                                            self.mac[0] = item
+                                            source = count
+                                        else:
+                                            self.mac[1] = item
+                                            destination = count
+                                    self.main_gui.mac_addr[count] = self._convert_mac(item)
+                                count += 1
+                            if self.mac[0] and self.mac[1]:
+                                # Обрезаем идентификаторы из тела пакета
+                                packet = packet[24:]
+                                # packet = packet.replace(self.mac[0], "").replace(self.mac[1], "")
+                                direction += "  " + self.main_gui.mac_addr[source] + "-" + self.main_gui.mac_addr[destination]
+                            else:
+                                # Обрезаем идентификаторы из тела пакета
+                                packet = packet[24:]
                 except Exception as e:
                     self.main_gui.update_message_area(f"Ошибка при парсинге заголовка: {e}")
 
                 # Парсинг содержимого команды
-                try:
-                    # Если данные не шифрованы
-                    if not data_encrypt:
-                        if packet_type == "DT_SERV":
-                            serv_cmd_type_byte = str(packet[4:6])
-                            if serv_cmd_type_byte:
-                                serv_cmd_type = int(serv_cmd_type_byte, 16)
-                                packet_type += self.serv_cmd_types[serv_cmd_type]
-                                if serv_cmd_type == 2:
-                                    # Сохраняем значение счетчика мастер ключа
-                                    self.master_key_counter[address] = packet[6:14]
-                        # Дополняем общую длину пакета длиной данных
-                        not_encr_data_len_byte = str(packet[:2])
-                        if not_encr_data_len_byte:
-                            not_encr_data_len = int(not_encr_data_len_byte, 16)
-                            packet_len = f"{overall_len}+{not_encr_data_len}"
-                        if not decode:
-                            decode = "Не шифрованные данные"
-                    # Данные шифрованы
-                    else:
-                        # Начинаем расшифровку только если получен счетчик мастер ключа
-                        if not self.master_key_counter[address]:
-                            decode = "Ошибка, не получен счетчик мастер-ключа"
-                        else:
-                            # Убираем значение счетчика, mac и crc из данных
-                            packet = packet[2:len(packet) - 12]
-                            if not encrypted_work_key:
-                                # Расшифровка мастер ключом
-                                decode_packet = self.decrypt_with_master_key(address, packet)
-                            else:
-                                # Расшифровка рабочим ключом
-                                decode_packet = self.decrypt_with_work_key(address, packet)
-                            # Уточняем тип пакета
+                if not dont_decode:
+                    try:
+                        # Если данные не шифрованы
+                        if not data_encrypt:
                             if packet_type == "DT_SERV":
-                                packet_type += self.serv_cmd_types[decode_packet[2]]
-                                if decode_packet[2] == 2:
-                                    # Сохраняем значение счетчика мастер ключа
-                                    self.master_key_counter[address] = packet[6:14]
-                            elif packet_type == "DT_DATA":
-                                packet_type += self.data_cmd_types[decode_packet[1]]
-                            # Сохраняем расшифрованные данные
-                            decode = decode_packet
+                                serv_cmd_type_byte = str(packet[4:6])
+                                if serv_cmd_type_byte:
+                                    serv_cmd_type = int(serv_cmd_type_byte, 16)
+                                    packet_type += self.serv_cmd_types[serv_cmd_type]
+                                    if serv_cmd_type == 2:
+                                        # Сохраняем значение счетчика мастер ключа
+                                        self.master_key_counter[address] = packet[6:14]
                             # Дополняем общую длину пакета длиной данных
-                            data_len = decode_packet[0]
-                            packet_len = f"{overall_len}+{data_len}"
-                except Exception as e:
-                    self.main_gui.update_message_area(f"Ошибка при парсинге данных: {e}")
+                            not_encr_data_len_byte = str(packet[:2])
+                            if not_encr_data_len_byte:
+                                not_encr_data_len = int(not_encr_data_len_byte, 16)
+                                packet_len = f"{overall_len}/{not_encr_data_len}"
+                            if not decode:
+                                decode = "Не шифрованные данные"
+                        # Данные шифрованы
+                        else:
+                            # Начинаем расшифровку только если получен счетчик мастер ключа
+                            if not self.master_key_counter[address]:
+                                decode = "Ошибка, не получен счетчик мастер-ключа"
+                            else:
+                                s_counter = packet[:2]
+                                # Убираем значение счетчика, mac и crc из данных
+                                packet = packet[2:len(packet) - 12]
+                                if not encrypted_work_key:
+                                    # Расшифровка мастер ключом
+                                    decode_packet = self._decrypt_with_master_key(address, packet, s_counter)
+                                else:
+                                    if not (self.work_key_out_counter[address] and self.work_key_in_counter[address]):
+                                        decode = "Ошибка, не получен счетчик рабочего ключа"
+                                        decode_packet = ""
+                                    else:
+                                        # Расшифровка рабочим ключом
+                                        decode_packet = self._decrypt_with_work_key(address, packet, s_counter)
+                                        # Уточняем тип пакета
+                                        if packet_type == "DT_SERV":
+                                            packet_subtype = decode_packet[2]
+                                            if packet_subtype in self.serv_cmd_types:
+                                                packet_type += self.serv_cmd_types[packet_subtype]
+                                            else:
+                                                packet_type += f"({str(packet_subtype)})+"
+                                                # decode = "Ошибка, неизвестный подтип пакета"
+                                            if packet_subtype == 2:
+                                                # Сохраняем значение счетчика мастер ключа
+                                                self.master_key_counter[address] = packet[6:14]
+                                        elif packet_type == "DT_DATA":
+                                            packet_subtype = decode_packet[1]
+                                            if packet_subtype in self.data_cmd_types:
+                                                packet_type += self.data_cmd_types[packet_subtype]
+                                            else:
+                                                packet_type += f"({str(packet_subtype)})+"
+                                                # decode = "Ошибка, неизвестный подтип пакета"
+                                if not decode:
+                                    # Сохраняем расшифрованные данные
+                                    decode = decode_packet
+                                    # Дополняем общую длину пакета длиной данных
+                                    data_len = decode_packet[0]
+                                    packet_len = f"{overall_len}/{data_len}"
+                    except Exception as e:
+                        self.main_gui.update_message_area(f"Ошибка при парсинге данных: {e}")
             # Отправка данных на экран и в лог-файл
             self.update_gui_and_log(packet, packet_len, packet_num, direction, packet_type + decoded_flags, decode)
 
@@ -370,7 +428,7 @@ class DataProcessing:
         """Отправка данных на экран и в лог-файл"""
         try:
             # Отправка данных в лог
-            if not (decode and packet_len and packet_num and direction and packet_type_flags):
+            if not decode:
                 self.logger_queue.put(f"{self.timestamp}  {packet}")
             else:
                 self.logger_queue.put(f"{self.timestamp}  {packet}  {packet_len}  {packet_num}  {direction}  "
@@ -379,7 +437,7 @@ class DataProcessing:
             self.main_gui.update_message_area(f"Очередь лога заполнена")
         try:
             # Обновляем GUI
-            if not (decode and packet_len and packet_num and direction and packet_type_flags):
+            if not decode:
                 self.main_gui.update_data_area(f"{self.timestamp}@{packet}")
             else:
                 self.main_gui.update_data_area(f"{self.timestamp}@{packet}@{packet_len}"
@@ -387,7 +445,7 @@ class DataProcessing:
         except queue.Full:
             self.main_gui.update_message_area(f"Очередь гуи заполнена")
 
-    def decode_flags(self, flags):
+    def _decode_flags(self, flags):
         if flags:
             binary_str = format(flags, '08b')
             array_flags = [int(bit) for bit in binary_str]
@@ -397,9 +455,39 @@ class DataProcessing:
             return decoded_flags
         return ""
 
-    def decrypt_with_work_key(self, address, packet):
+    @staticmethod
+    def _convert_and_increment(hex_little_endian):
+        """Функция инкрементирования счетчиков ключей с конвертацией литл-индиан в биг-индиан и обратно"""
+        # Преобразуем строку в байты
+        little_endian_bytes = bytes.fromhex(hex_little_endian)
+        # Преобразуем из little-endian в int
+        int_value = int.from_bytes(little_endian_bytes, byteorder='little')
+        # Увеличиваем значение на 1
+        int_value += 1
+        # Преобразуем обратно в байты в little-endian формате
+        new_little_endian_bytes = int_value.to_bytes(4, byteorder='little')
+        # Преобразуем байты обратно в строку hex
+        return new_little_endian_bytes.hex()
+
+    @staticmethod
+    def _convert_mac(mac_little):
+        """Конвертирует MAC-адрес из little-endian в big-endian формат."""
+        if mac_little != "00:00:00:00:00:00":
+            pairs = [mac_little[i:i + 2] for i in range(0, 12, 2)]
+            mac_convert = ":".join(reversed(pairs))
+            return mac_convert
+        return mac_little
+
+    def _decrypt_with_work_key(self, address, packet, s_counter):
         work_key = ""
         init_vector = ""
+
+        # Инкрементируем значения счетчиков после получения пакета при этом сравниваем значение младшего байта
+        if (self.mac[0] == self.give_addr[address]) and (s_counter != self.work_key_out_counter[address][:2]):
+            self.work_key_out_counter[address] = self._convert_and_increment(self.work_key_out_counter[address])
+        elif (self.mac[1] == self.give_addr[address]) and (s_counter != self.work_key_in_counter[address][:2]):
+            self.work_key_in_counter[address] = self._convert_and_increment(self.work_key_in_counter[address])
+
         if self.mac[0] == self.give_addr[address]:
             # Получаем начальный вектор расшифровки из saf+daf+SCNum
             init_vector = self.mac[0] + self.mac[1] + self.work_key_out_counter[address]
@@ -408,39 +496,21 @@ class DataProcessing:
             # Получаем начальный вектор расшифровки из saf+daf+SCNum
             init_vector = self.mac[0] + self.mac[1] + self.work_key_in_counter[address]
             work_key = self.work_key_in[address]
-        decode_packet = self.decrypt_aes(init_vector, work_key, packet)
+        decode_packet = self._decrypt_aes(init_vector, work_key, packet)
 
-        def convert_and_increment(hex_little_endian):
-            """Функция инкрементирования счетчиков ключей с конвертацией литл-индиан в биг-индиан и обратно"""
-            # Преобразуем строку в байты
-            little_endian_bytes = bytes.fromhex(hex_little_endian)
-            # Преобразуем из little-endian в int
-            int_value = int.from_bytes(little_endian_bytes, byteorder='little')
-            # Увеличиваем значение на 1
-            int_value += 1
-            # Преобразуем обратно в байты в little-endian формате
-            new_little_endian_bytes = int_value.to_bytes(4, byteorder='little')
-            # Преобразуем байты обратно в строку hex
-            return new_little_endian_bytes.hex()
-
-        # Инкрементируем значения счетчиков после получения пакета
-        if self.mac[0] == self.give_addr[address]:
-            self.work_key_out_counter[address] = convert_and_increment(self.work_key_out_counter[address])
-        elif self.mac[1] == self.give_addr[address]:
-            self.work_key_in_counter[address] = convert_and_increment(self.work_key_in_counter[address])
         return decode_packet
 
-    def decrypt_with_master_key(self, address, packet):
+    def _decrypt_with_master_key(self, address, packet, s_counter):
+        if (s_counter != self.master_key_counter[address][:2]) and (self.work_key_out_counter[address] and self.work_key_in_counter[address]):
+            self.master_key_counter[address] = self._convert_and_increment(self.master_key_counter[address])
         # Получаем начальный вектор расшифровки из saf+daf+SCNum
         init_vector = self.mac[0] + self.mac[1] + self.master_key_counter[address]
         # Расшифровка пакета
-        decode_packet = self.decrypt_aes(init_vector, self.master_key, packet)
+        decode_packet = self._decrypt_aes(init_vector, self.master_key, packet)
         # Преобразуем список целых чисел в объект bytes
         byte_sequence = bytes(decode_packet)
         # Используем метод hex() для преобразования в шестнадцатеричную строку
         hex_string = byte_sequence.hex()
-        # Берем свежее значение счетчика мастер ключа
-        # self.master_key_counter[address] = hex_string[8:16]
         # Забираем рабочий ключ для исходящих пакетов абонента
         work_key_shift = len(hex_string) - 32
         if self.mac[0] == self.give_addr[address]:
@@ -452,7 +522,7 @@ class DataProcessing:
             self.work_key_out_counter[address] = hex_string[work_key_shift - 8:work_key_shift]
         return decode_packet
 
-    def decrypt_aes(self, init_vector_str, key_str, data_str):
+    def _decrypt_aes(self, init_vector_str, key_str, data_str):
         """Расшифровка AES для ориона2"""
         # Преобразуем строку в байты
         key = bytes.fromhex(key_str)
