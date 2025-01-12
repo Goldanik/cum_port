@@ -71,7 +71,7 @@ class SerialMonitorGUI:
         # GUI по таймер
         self.gui_update_timeout = 200
         # Обновляем GUI по таймеру
-        self.gui.after(self.gui_update_timeout, self.process_gui_queue)
+        self.gui.after(self.gui_update_timeout, self._process_gui_queue)
 
         # Пользовательский шаблон для парсера
         self.custom_skip_pattern = tk.StringVar(value="")
@@ -101,9 +101,9 @@ class SerialMonitorGUI:
         self.column_widths = {col[0]: col[2] for col in self.data_columns}
 
         # Создание элементов интерфейса
-        self.create_widgets()
+        self._create_widgets()
 
-    def create_widgets(self):
+    def _create_widgets(self):
         """Создание графического окна"""
         # Создаем два фрейма: для фиксированного и растягивающегося содержимого
         fixed_frame = tk.Frame(self.gui, bg="gray")
@@ -127,7 +127,7 @@ class SerialMonitorGUI:
         self.port_combobox.state(['readonly'])
 
         # Кнопка обновить список портов
-        self.refresh_ports_button = ttk.Button(settings_frame, text=u'\u21bb', command=self.refresh_ports, width=4)
+        self.refresh_ports_button = ttk.Button(settings_frame, text=u'\u21bb', command=self._refresh_ports, width=4)
         self.refresh_ports_button.grid(row=0, column=2, padx=5)
 
         ttk.Label(settings_frame, text="Скорость:").grid(row=1, column=0, sticky="w")
@@ -144,11 +144,11 @@ class SerialMonitorGUI:
         ttk.Combobox(settings_frame, textvariable=self.stop_bits, values=self.stop_bits_list, width=8).grid(row=4, column=1, padx=5)
 
         # Кнопка "Открыть порт"
-        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self.attempt_open_port)
+        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self._attempt_open_port)
         self.open_button.grid(row=5, column=0, columnspan=3, pady=5, sticky="we")
 
         # Кнопка "Очистить экран"
-        self.clear_button = ttk.Button(settings_frame, text="Очистить экран", command=self.clear_screen)
+        self.clear_button = ttk.Button(settings_frame, text="Очистить экран", command=self._clear_screen)
         self.clear_button.grid(row=6, column=0, columnspan=3, pady=5, sticky="we")
 
         # Рамка
@@ -156,7 +156,7 @@ class SerialMonitorGUI:
         self.raw_file_frame.grid(row=7, column=0, pady=5, columnspan=3, sticky="nwe")
 
         # Добавляем кнопку "Открыть файл"
-        ttk.Button(self.raw_file_frame, text="Открыть файл", command=self.open_file).grid(row=8, column=0, columnspan=3,
+        ttk.Button(self.raw_file_frame, text="Открыть файл", command=self._open_file).grid(row=8, column=0, columnspan=3,
                                                                                      pady=5, sticky="we")
 
         # Рамка "Функции Орион 2"
@@ -199,11 +199,11 @@ class SerialMonitorGUI:
 
         # Кнопки выбора кодировок
         ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2",
-                        command=self.hide_columns_on_encoding).grid(row=0, column=0, sticky="w")
+                        command=self._hide_columns_on_encoding).grid(row=0, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX",
-                        command=self.hide_columns_on_encoding).grid(row=1, column=0, sticky="w")
+                        command=self._hide_columns_on_encoding).grid(row=1, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII",
-                        command=self.hide_columns_on_encoding).grid(row=3, column=0, sticky="w")
+                        command=self._hide_columns_on_encoding).grid(row=3, column=0, sticky="w")
 
         tree_frame = ttk.Frame(stretchable_frame)
         tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
@@ -235,7 +235,7 @@ class SerialMonitorGUI:
             # По умолчанию все столбцы видимы
             var = tk.BooleanVar(value=True)
             cb = ttk.Checkbutton(column_options_frame, text=column_name, variable=var,
-                                 command=lambda col=column_id: self.toggle_column_visibility(col))
+                                 command=lambda col=column_id: self._toggle_column_visibility(col))
             cb.pack(side=tk.LEFT, padx=5)
             self.column_visibility[column_id] = var
 
@@ -259,7 +259,7 @@ class SerialMonitorGUI:
         tree_frame.grid_rowconfigure(1, weight=1)
 
         # Создание функционала копирования данных из таблицы по хоткею
-        self.tree.bind('<Control-c>', self.copy_selection)
+        self.tree.bind('<Control-c>', self._copy_selection)
 
         # Текстовая строка для вывода сообщений
         message_frame = ttk.Frame(stretchable_frame)
@@ -291,7 +291,7 @@ class SerialMonitorGUI:
         self.gui.grid_columnconfigure(0, weight=0)
         self.gui.grid_columnconfigure(1, weight=1)
 
-    def open_file(self):
+    def _open_file(self):
         """Открывает текстовый файл, читает его содержимое и отправляет данные в очередь."""
         try:
             # Открываем диалог выбора файла
@@ -322,13 +322,13 @@ class SerialMonitorGUI:
             # Обновляем сообщение в GUI
             self.update_message_area(f"Файл {file_path} успешно прочитан и данные добавлены в очередь.")
             # Чистим экран перед открытием нового файла
-            self.clear_screen()
+            self._clear_screen()
             # Запускаем поток обработки данных, если он еще не работает
             self.data_proc.start_data_processing()
         except Exception as e:
             self.update_message_area(f"Ошибка при чтении файла: {e}")
 
-    def toggle_column_visibility(self, column_id):
+    def _toggle_column_visibility(self, column_id):
         """Переключает видимость столбца в зависимости от состояния галочки."""
         # Если галочка установлена
         if self.column_visibility[column_id].get():
@@ -342,23 +342,23 @@ class SerialMonitorGUI:
             self.tree.heading(column_id, text="")  # Очистить заголовок столбца
             self.tree.column(column_id, stretch=False)  # Убедитесь, что столбец не растягивается
 
-    def hide_columns_on_encoding(self):
+    def _hide_columns_on_encoding(self):
         """Отключает столбцы и меняет их ширину в таблице данных в зависимости от выбранной кодировки."""
         if self.encoding.get() == "O2":
             # В кодировке о2 включаем все столбцы со стандартной заданной шириной
             for column_id, column_name, column_width in self.data_columns:
                 self.tree.column(column_id, width=column_width, stretch=False)
                 self.column_visibility[column_id].set(True)
-                self.toggle_column_visibility(column_id)
+                self._toggle_column_visibility(column_id)
         else:
             # Для кодировок ASCI и HEX выключаем все столбцы кроме времени и сырых данных
             self.tree.column("time", width=100, stretch=False, anchor="center")
             self.tree.column("raw_data", width=600)
             for column_id, column_name, column_width in self.data_columns[2:]:
                 self.column_visibility[column_id].set(False)
-                self.toggle_column_visibility(column_id)
+                self._toggle_column_visibility(column_id)
 
-    def attempt_open_port(self):
+    def _attempt_open_port(self):
         """Открытие последовательного порта"""
         # Закрываем порт, если он уже открыт
         if self.serial_port.is_open:
@@ -376,7 +376,7 @@ class SerialMonitorGUI:
         )
 
         if self.serial_port.is_open:
-            self.open_button.config(text="Закрыть порт", command=self.attempt_close_port)
+            self.open_button.config(text="Закрыть порт", command=self._attempt_close_port)
             # Запускаем поток обработчика
             self.data_proc.start_data_processing()
             # Запускаем поток логера
@@ -384,15 +384,15 @@ class SerialMonitorGUI:
             self.update_message_area(f"Порт {self.port.get()} открыт.")
         return
 
-    def attempt_close_port(self):
+    def _attempt_close_port(self):
         """Закрытие последовательного порта"""
         self.serial_port.close_port()
         self.data_proc.stop_data_processing()
         self.file_logger.stop()
-        self.open_button.config(text="Открыть порт", command=self.attempt_open_port)
+        self.open_button.config(text="Открыть порт", command=self._attempt_open_port)
         self.update_message_area("Порт закрыт.")
 
-    def refresh_ports(self):
+    def _refresh_ports(self):
         """Обновляет список доступных COM-портов."""
         available_ports = self.serial_port.get_available_ports()
         self.port_combobox['values'] = available_ports
@@ -401,7 +401,7 @@ class SerialMonitorGUI:
         else:
             self.port.set("")  # Если портов нет, сбрасываем значение
 
-    def copy_selection(self, event):
+    def _copy_selection(self, event):
         """Функционал копирования строк из окна вывода"""
         selected_items = self.tree.selection()
         if not selected_items:
@@ -416,19 +416,19 @@ class SerialMonitorGUI:
         self.gui.clipboard_clear()
         self.gui.clipboard_append(copied_string)
 
-    def clear_screen(self):
+    def _clear_screen(self):
         """Кнопка очистки окна вывода"""
         # Сбрасываем счетчики в списках (инициализируем заново)
         self.req_ack_counters = [0] * 32
         self.search_counters = [0] * 32
         self.get_id_counters = [0] * 32
-        self.mac_addr = [0] * 32
+        self.mac_addr = [""] * 32
         self.data_proc.counter_custom = 0
-        self.update_counters()
+        self._update_counters()
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-    def update_counters(self):
+    def _update_counters(self):
         """Обновление данных в таблице счетчиков."""
         # Обновляем данные в строках таблицы
         for i in range(32):
@@ -459,44 +459,37 @@ class SerialMonitorGUI:
         """Запись в очередь гуи для окна вывода"""
         self.gui_queue.put(('text', formatted_data))
 
-    def append_to_tree(self, values):
-        """Добавление строки в таблицу с учетом автопрокрутки."""
+    def _update_data_area(self, formatted_data):
+        """Обновляет таблицу вывода данными."""
+        # Разделяем данные по формату
+        parts = formatted_data.split('@', 6)
+        if len(parts) == 7:
+            values = (
+                parts[0],  # Время
+                parts[1],  # Сырые данные
+                parts[2],  # Длина
+                parts[3],  # Номер пакета
+                parts[4],  # Направление
+                parts[5],  # Тип пакета
+                parts[6]  # Расшифрованные данные
+            )
+        elif len(parts) == 2:
+            values = (parts[0], parts[1], "", "", "", "", "")
+        else:
+            values = ("", "", "", "", "", "", "")
+
+        # Добавляем строку в таблицу
         self.tree.insert('', 'end', values=values)
 
         # Выполняем автопрокрутку, только если галочка включена
         if self.autoscroll_enabled.get():
             self.tree.yview_moveto(1.0)  # Прокрутка в самый низ
 
-    def _update_data_area(self, formatted_data):
-        """Обновление данных в окне вывода"""
-        timestamp = ""
-        raw_data = ""
-        data_len = ""
-        pnum = ""
-        direction = ""
-        packet_type = ""
-        decoded_data = ""
-        # Разделяем данные на время и содержимое
-        parts = formatted_data.split('@', 6)
-        if len(parts) == 7:
-            timestamp = parts[0]
-            raw_data = parts[1]
-            data_len = parts[2]
-            pnum = parts[3]
-            direction = parts[4]
-            packet_type = parts[5]
-            decoded_data = parts[6]
-        elif len(parts) == 2:
-            timestamp = parts[0]
-            raw_data = parts[1]
-
-        # Обновляем дерево (GUI) из главного потока
-        self.append_to_tree((timestamp, raw_data, data_len, pnum, direction, packet_type, decoded_data))
-        # Ограничиваем количество строк в дереве удаляя старые
+        # Удаляем старые строки, если превышен лимит
         if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
             self.tree.delete(self.tree.get_children()[0])
 
-    def process_gui_queue(self):
+    def _process_gui_queue(self):
         """Обработчик очереди гуи и отрисовка данных"""
         # Добавляем временный буфер для накопления данных
         accumulated_text_data = []
@@ -515,7 +508,7 @@ class SerialMonitorGUI:
             if accumulated_text_data:
                 for text_data in accumulated_text_data:
                     self._update_data_area(text_data)
-            self.update_counters()
+            self._update_counters()
         if self.file_open:
             # Стираем флаг обновления гуи после открытия файла
             if self.data_queue.empty() and self.gui_queue.empty():
@@ -524,7 +517,7 @@ class SerialMonitorGUI:
                 # Останавливаем поток после расшифровки файла
                 self.data_proc.stop_data_processing()
         # Повторный вызов отрисовки
-        self.gui.after(self.gui_update_timeout, self.process_gui_queue)
+        self.gui.after(self.gui_update_timeout, self._process_gui_queue)
 
 # Очередь логера
 log_queue = queue.Queue()
