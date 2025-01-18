@@ -1,3 +1,4 @@
+import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog
 import queue
@@ -10,23 +11,15 @@ import data_processing
 class SerialMonitorGUI:
     def __init__(self, gui, logger_queue, data_proc_queue):
         # Кнопки
-        self.file_open = False
-        self.refresh_ports_button = None
-        self.clear_button = None
         self.open_button = None
         # Прочая
         self.counter_table = None
         self.port_combobox = None
-        self.raw_file_frame = None
-        self.counter_label_custom = None
-        self.custom_pattern_entry = None
-        self.custom_pattern_frame = None
-        self.counter_frame = None
         self.message_area = None
         self.tree = None
         self.encoding = None
         self.autoscroll_enabled = None
-        self.autoscroll_checkbox = None
+        self.file_open = False
 
         # Инициализация массивов счетчиков
         self.req_ack_counters = [0] * 32  # Счетчики REQ/ACK для каждого адреса
@@ -64,7 +57,7 @@ class SerialMonitorGUI:
         self.gui.title("CUM-port")
         self.gui.geometry("1270x750")
         self.gui.minsize(1270,750)
-        self.version = "Версия: 1.01"
+        self.version = "Версия: 1.02"
 
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
@@ -115,7 +108,7 @@ class SerialMonitorGUI:
 
         # Рамка для настроек COM-порта
         settings_frame = ttk.LabelFrame(fixed_frame, text="Настройки COM-порта")
-        settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nwe")
+        settings_frame.grid(row=0, column=0, padx=10, pady=5, sticky="nwe")
 
         # Имена и поля ввода для параметров
         ttk.Label(settings_frame, text="Порт:").grid(row=0, column=0, sticky="w")
@@ -127,8 +120,8 @@ class SerialMonitorGUI:
         self.port_combobox.state(['readonly'])
 
         # Кнопка обновить список портов
-        self.refresh_ports_button = ttk.Button(settings_frame, text=u'\u21bb', command=self._refresh_ports, width=4)
-        self.refresh_ports_button.grid(row=0, column=2, padx=5)
+        refresh_ports_button = ttk.Button(settings_frame, text=u'\u21bb', command=self._refresh_ports, width=4)
+        refresh_ports_button.grid(row=0, column=2, padx=5)
 
         ttk.Label(settings_frame, text="Скорость:").grid(row=1, column=0, sticky="w")
         ttk.Combobox(settings_frame, textvariable=self.baud_rate, values=self.baud_rate_list,
@@ -144,57 +137,27 @@ class SerialMonitorGUI:
         ttk.Combobox(settings_frame, textvariable=self.stop_bits, values=self.stop_bits_list, width=8).grid(row=4, column=1, padx=5)
 
         # Кнопка "Открыть порт"
-        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self._attempt_open_port)
-        self.open_button.grid(row=5, column=0, columnspan=3, pady=5, sticky="we")
+        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self._attempt_open_port, width=20)
+        self.open_button.grid(row=5, column=0, columnspan=2, pady=5, sticky="we")
 
-        # Кнопка "Очистить экран"
-        self.clear_button = ttk.Button(settings_frame, text="Очистить экран", command=self._clear_screen)
-        self.clear_button.grid(row=6, column=0, columnspan=3, pady=5, sticky="we")
+        # Рамка разных настроек в две колонки
+        double_column_frame = ttk.LabelFrame(fixed_frame, text="Разное:")
+        double_column_frame.grid(row=1, column=0, padx=10, pady=5, sticky="nwe")
 
-        # Рамка
-        self.raw_file_frame = ttk.LabelFrame(settings_frame, text="Парсинг сырых данных из файла:")
-        self.raw_file_frame.grid(row=7, column=0, pady=5, columnspan=3, sticky="nwe")
+        # Рамка работы с файлом
+        raw_file_frame = ttk.LabelFrame(double_column_frame, text="Парсинг сырых данных\nиз файла:")
+        raw_file_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nwe")
 
         # Добавляем кнопку "Открыть файл"
-        ttk.Button(self.raw_file_frame, text="Открыть файл", command=self._open_file).grid(row=8, column=0, columnspan=3,
-                                                                                     pady=5, sticky="we")
+        clear_button = ttk.Button(raw_file_frame, text="Открыть файл", command=self._open_file, width=20)
+        clear_button.grid(row=0, column=0, padx=5, pady=5, sticky="we")
 
-        # Рамка "Функции Орион 2"
-        o2_frame = ttk.LabelFrame(fixed_frame, text="Функции О2")
-        o2_frame.grid(row=3, column=0, padx=10, pady=5, sticky="nwe")
-
-        # Рамка "Счетчики сервисных запросов"
-        self.counter_frame = ttk.LabelFrame(o2_frame, text="Счетчики сервисных запросов")
-        self.counter_frame.grid(row=7, column=0, pady=5, sticky="nwe")
-
-        # Создаем таблицу для отображения данных
-        self.counter_table = ttk.Treeview(self.counter_frame, columns=("address", "req_ack", "search", "get_id", "give_addr"),
-                                          show="headings", height=10)
-        self.counter_table.heading("address", text="№")
-        self.counter_table.heading("req_ack", text="IN/NACK")
-        self.counter_table.heading("search", text="SEARCH")
-        self.counter_table.heading("get_id", text="GETID")
-        self.counter_table.heading("give_addr", text="GIVEADDR")
-
-        # Устанавливаем ширину колонок
-        self.counter_table.column("address", width=30, anchor="center")
-        self.counter_table.column("req_ack", width=60, anchor="center")
-        self.counter_table.column("search", width=60, anchor="center")
-        self.counter_table.column("get_id", width=60, anchor="center")
-        self.counter_table.column("give_addr", width=100, anchor="center")
-
-        # Добавляем вертикальный скроллбар
-        scrollbar = ttk.Scrollbar(self.counter_frame, orient="vertical", command=self.counter_table.yview)
-        self.counter_table.configure(yscrollcommand=scrollbar.set)
-        self.counter_table.grid(row=0, column=0, sticky="nsew")
-        scrollbar.grid(row=0, column=1, sticky="ns")
-
-        # Инициализируем данные таблицы
-        for i in range(32):
-            self.counter_table.insert("", "end", values=(i, 0, 0, 0))
+        # Рамка "Настройки окна вывода"
+        screen_frame = ttk.LabelFrame(double_column_frame, text="Настройки окна вывода:")
+        screen_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nwe")
 
         # Настройки кодировки
-        encoding_frame = ttk.LabelFrame(fixed_frame, text="Кодировка")
+        encoding_frame = ttk.LabelFrame(screen_frame, text="Кодировка")
         encoding_frame.grid(row=2, column=0, padx=10, pady=5, sticky="nwe")
 
         # Кнопки выбора кодировок
@@ -205,39 +168,54 @@ class SerialMonitorGUI:
         ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII",
                         command=self._hide_columns_on_encoding).grid(row=3, column=0, sticky="w")
 
-        tree_frame = ttk.Frame(stretchable_frame)
-        tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
+        # Кнопка "Очистить экран"
+        clear_button = ttk.Button(screen_frame, text="Очистить экран", command=self._clear_screen, width=20)
+        clear_button.grid(row=0, column=0, padx=5, pady=5, sticky="we")
 
         # Добавляем фрейм для галочки автопрокрутки
-        scroll_control_frame = ttk.Frame(fixed_frame)
-        scroll_control_frame.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="ew")
+        scroll_control_frame = ttk.Frame(screen_frame)
+        scroll_control_frame.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
 
         # Переменная для отслеживания состояния галочки автопрокрутки
         self.autoscroll_enabled = tk.BooleanVar(value=True)
 
         # Галочка для автопрокрутки
-        self.autoscroll_checkbox = ttk.Checkbutton(
-            scroll_control_frame,
-            text="Автопрокрутка",
-            variable=self.autoscroll_enabled
-        )
-        self.autoscroll_checkbox.pack(side=tk.LEFT)
+        autoscroll_checkbox = ttk.Checkbutton(scroll_control_frame, text="Автопрокрутка", variable=self.autoscroll_enabled)
+        autoscroll_checkbox.pack(side=tk.LEFT)
 
-        # Добавляем фрейм для галочек над таблицей
-        column_options_frame = ttk.Frame(tree_frame)
-        column_options_frame.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="w")
+        # Рамка "Счетчики сервисных запросов О2"
+        counter_frame = ttk.LabelFrame(fixed_frame, text="Счетчики сервисных запросов О2")
+        counter_frame.grid(row=4, column=0, padx=10, pady=5, sticky="nwe")
 
-        # Заголовок для строки с галочками
-        ttk.Label(column_options_frame, text="Отображать столбцы:").pack(side=tk.LEFT, padx=(0, 10))
+        # Создаем таблицу для отображения данных
+        self.counter_table = ttk.Treeview(counter_frame, columns=("address", "req_ack", "search", "get_id", "give_addr"),
+                                          show="headings", height=10)
+        self.counter_table.heading("address", text="ADDR")
+        self.counter_table.heading("req_ack", text="IN/NACK")
+        self.counter_table.heading("search", text="SEARCH")
+        self.counter_table.heading("get_id", text="GETID")
+        self.counter_table.heading("give_addr", text="GIVEADDR")
 
-        # Заполняем заголовки галочек видимости
-        for column_id, column_name, column_width in self.data_columns:
-            # По умолчанию все столбцы видимы
-            var = tk.BooleanVar(value=True)
-            cb = ttk.Checkbutton(column_options_frame, text=column_name, variable=var,
-                                 command=lambda col=column_id: self._toggle_column_visibility(col))
-            cb.pack(side=tk.LEFT, padx=5)
-            self.column_visibility[column_id] = var
+        # Устанавливаем ширину колонок
+        self.counter_table.column("address", width=40, anchor="center")
+        self.counter_table.column("req_ack", width=60, anchor="center")
+        self.counter_table.column("search", width=60, anchor="center")
+        self.counter_table.column("get_id", width=40, anchor="center")
+        self.counter_table.column("give_addr", width=100, anchor="center")
+
+        # Добавляем вертикальный скроллбар
+        scrollbar = ttk.Scrollbar(counter_frame, orient="vertical", command=self.counter_table.yview)
+        self.counter_table.configure(yscrollcommand=scrollbar.set)
+        self.counter_table.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Инициализируем данные таблицы
+        for i in range(32):
+            self.counter_table.insert("", "end", values=(i, 0, 0, 0))
+
+        # Рамка вывода данных
+        tree_frame = ttk.Frame(stretchable_frame)
+        tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
 
         # Таблица вывода данных
         self.tree = ttk.Treeview(tree_frame, columns=[col[0] for col in self.data_columns], show="headings")
@@ -260,6 +238,22 @@ class SerialMonitorGUI:
 
         # Создание функционала копирования данных из таблицы по хоткею
         self.tree.bind('<Control-c>', self._copy_selection)
+
+        # Добавляем фрейм для галочек над таблицей
+        column_options_frame = ttk.Frame(tree_frame)
+        column_options_frame.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="w")
+
+        # Заголовок для строки с галочками
+        ttk.Label(column_options_frame, text="Отображать столбцы:").pack(side=tk.LEFT, padx=(0, 10))
+
+        # Заполняем заголовки галочек видимости
+        for column_id, column_name, column_width in self.data_columns:
+            # По умолчанию все столбцы видимы
+            var = tk.BooleanVar(value=True)
+            cb = ttk.Checkbutton(column_options_frame, text=column_name, variable=var,
+                                 command=lambda col=column_id: self._toggle_column_visibility(col))
+            cb.pack(side=tk.LEFT, padx=5)
+            self.column_visibility[column_id] = var
 
         # Текстовая строка для вывода сообщений
         message_frame = ttk.Frame(stretchable_frame)
@@ -293,40 +287,43 @@ class SerialMonitorGUI:
 
     def _open_file(self):
         """Открывает текстовый файл, читает его содержимое и отправляет данные в очередь."""
-        try:
-            # Открываем диалог выбора файла
-            file_path = filedialog.askopenfilename(
-                title="Открыть файл",
-                filetypes=(("Text files", "*.txt"), ("All files", "*.*"))
-            )
-            if not file_path:
-                return  # Если файл не выбран, ничего не делать
+        if self.serial_port.is_open and self.mac_addr[0]:
+            self.update_message_area(f"Закройте COM-порт и очистите экран если работали с портом. Очистите экран если работали с файлом.")
+        else:
+            try:
+                # Открываем диалог выбора файла
+                file_path = filedialog.askopenfilename(
+                    title="Открыть файл",
+                    filetypes=(("Text files", "*.txt"), ("All files", "*.*"))
+                )
+                if not file_path:
+                    return  # Если файл не выбран, ничего не делать
 
-            # Читаем файл построчно
-            with open(file_path, "r", encoding="utf-8") as file:
-                buffer = []
-                for line in file:
-                    # Удаляем символы новой строки и пробелы
-                    stripped_line = line.strip()
-                    if stripped_line:
-                        # Преобразуем строку в байты (если строка содержит HEX-представление данных)
-                        try:
-                            buffer.append(bytes.fromhex(stripped_line))
-                        except ValueError:
-                            self.update_message_area(f"Ошибка преобразования строки в байты: {stripped_line}")
-                # Добавляем все данные в очередь блоками
-                for chunk in buffer:
-                    self.data_queue.put(chunk)
-            self.file_open = True
+                # Читаем файл построчно
+                with open(file_path, "r", encoding="utf-8") as file:
+                    buffer = []
+                    for line in file:
+                        # Удаляем символы новой строки и пробелы
+                        stripped_line = line.strip()
+                        if stripped_line:
+                            # Преобразуем строку в байты (если строка содержит HEX-представление данных)
+                            try:
+                                buffer.append(bytes.fromhex(stripped_line))
+                            except ValueError:
+                                self.update_message_area(f"Ошибка преобразования строки в байты: {stripped_line}")
+                    # Добавляем все данные в очередь блоками
+                    for chunk in buffer:
+                        self.data_queue.put(chunk)
+                self.file_open = True
 
-            # Обновляем сообщение в GUI
-            self.update_message_area(f"Файл {file_path} успешно прочитан и данные добавлены в очередь.")
-            # Чистим экран перед открытием нового файла
-            self._clear_screen()
-            # Запускаем поток обработки данных, если он еще не работает
-            self.data_proc.start_data_processing()
-        except Exception as e:
-            self.update_message_area(f"Ошибка при чтении файла: {e}")
+                # Обновляем сообщение в GUI
+                self.update_message_area(f"Файл {file_path} успешно прочитан и данные добавлены в очередь.")
+                # Чистим экран перед открытием нового файла
+                self._clear_screen()
+                # Запускаем поток обработки данных, если он еще не работает
+                self.data_proc.start_data_processing()
+            except Exception as e:
+                self.update_message_area(f"Ошибка при чтении файла: {e}")
 
     def _toggle_column_visibility(self, column_id):
         """Переключает видимость столбца в зависимости от состояния галочки."""
@@ -360,11 +357,8 @@ class SerialMonitorGUI:
 
     def _attempt_open_port(self):
         """Открытие последовательного порта"""
-        # Закрываем порт, если он уже открыт
-        if self.serial_port.is_open:
-            self.serial_port.close_port()
-            self.data_proc.stop_data_processing()
-            self.file_logger.stop()
+        # Очистка счетчиков, если не первая попытка открыть порт
+        self._clear_screen()
         # Открываем порт с заданными параметрами
         self.serial_port.open_port(
             port=self.port.get(),
@@ -422,9 +416,13 @@ class SerialMonitorGUI:
         self.req_ack_counters = [0] * 32
         self.search_counters = [0] * 32
         self.get_id_counters = [0] * 32
-        self.mac_addr = [""] * 32
         self.data_proc.counter_custom = 0
         self._update_counters()
+        # Если закрыли-открыли порт (мак адреса не пустые с прошлого раза) сообщаем об очистке
+        if self.mac_addr[0]:
+            self.update_message_area("Экран очищен.")
+        # Сброс мак-адресов
+        self.mac_addr = [""] * 32
         for item in self.tree.get_children():
             self.tree.delete(item)
 
@@ -442,7 +440,8 @@ class SerialMonitorGUI:
 
     def update_message_area(self, message):
         """Запись в очередь гуи для информационной строки"""
-        self.gui_queue.put(('message', message))
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        self.gui_queue.put(('message', f"{timestamp} {message}"))
 
     def _update_message_area(self, message):
         """Обновление информационной строки"""
@@ -512,7 +511,7 @@ class SerialMonitorGUI:
         if self.file_open:
             # Стираем флаг обновления гуи после открытия файла
             if self.data_queue.empty() and self.gui_queue.empty():
-                self._update_message_area("Расшифровка файла завершена")
+                self.update_message_area("Расшифровка файла завершена")
                 self.file_open = False
                 # Останавливаем поток после расшифровки файла
                 self.data_proc.stop_data_processing()

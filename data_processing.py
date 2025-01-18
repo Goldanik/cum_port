@@ -50,16 +50,20 @@ class DataProcessing:
 
         # Флаги данных в заголовке пакета
         self.packet_flags = ["SAF", "DAF", "Ackn", "PFirst", "PSyn", "WKey", "SMode", "Reserv"]
-        # Счетчик мастер ключа
+        # Счетчик мастер ключа СЧМК
         self.master_key_counter = [""] * 32
+        # Флаг получения СЧМК, введен т.к. счетчик может быть 0, и его пустоту никак не проверить
+        self.new_mkey_saved = False
         # Мастер ключ
         self.master_key = "A4955A7C0C51939E863C135FF468693D"
-        # Рабочий ключ и его счетчик для расшифровки исходящего пакета
+        # Рабочий ключ и его счетчик СЧРК для расшифровки исходящего пакета
         self.work_key_out_counter = [""] * 32
         self.work_key_out = [""] * 32
-        # Рабочий ключ и его счетчик для расшифровки входящего пакета
+        # Рабочий ключ и его счетчик СЧРК для расшифровки входящего пакета
         self.work_key_in_counter = [""] * 32
         self.work_key_in = [""] * 32
+        # Флаг получения СЧРК, введен т.к. счетчик может быть 0, и его пустоту никак не проверить
+        self.new_wkey_saved = False
         # Мак-адрес GIVEADDR в литл-индиан как в пакете
         self.give_addr = [""] * 32
         # Список типов пакетов
@@ -112,12 +116,14 @@ class DataProcessing:
         # Очищаем ссылку на поток
         self.data_process_thread = None
         # Очищаем ключи, счетчики, ид
-        self.master_key_counter = [""] * 32
-        self.work_key_out_counter = [""] * 32
-        self.work_key_out = [""] * 32
-        self.work_key_in_counter = [""] * 32
-        self.work_key_in = [""] * 32
-        self.give_addr = [""] * 32
+        # Очистка отключена т.к. удобнее пытаться восстановить ключ между сессиями открытия порта
+        # self.new_mkey_saved = False
+        # self.master_key_counter = [""] * 32
+        # self.work_key_out_counter = [""] * 32
+        # self.work_key_out = [""] * 32
+        # self.work_key_in_counter = [""] * 32
+        # self.work_key_in = [""] * 32
+        # self.give_addr = [""] * 32
 
     def encodings_handler(self, encoding):
         """Обработка кодировок данных"""
@@ -215,6 +221,7 @@ class DataProcessing:
             bytes_first = bytes([packet[0]])
             if not ((bytes_length > 2) and (bytes_first == b"\xff")):
                 decode = "Ошибка, пакет не целый"
+                packet = packet.hex()
             else:
                 # Заменяем в пакете подмененные при передаче байты
                 packet = packet.replace(b'\xFE\x01', b'\xFF').replace(b'\xFE\x02', b'\xFE')
@@ -369,6 +376,8 @@ class DataProcessing:
                                     if serv_cmd_type == 2:
                                         # Сохраняем значение счетчика мастер ключа
                                         self.master_key_counter[address] = packet[6:14]
+                                        # Ставим флаг, что ключ получен
+                                        self.new_mkey_saved = True
                             # Дополняем общую длину пакета длиной данных
                             not_encr_data_len_byte = str(packet[:2])
                             if not_encr_data_len_byte:
@@ -379,17 +388,19 @@ class DataProcessing:
                         # Данные шифрованы
                         else:
                             # Начинаем расшифровку только если получен счетчик мастер ключа
-                            if not self.master_key_counter[address]:
+                            if not self.new_mkey_saved:
                                 decode = "Ошибка, не получен счетчик мастер-ключа"
                             else:
                                 s_counter = packet[:2]
                                 # Убираем значение счетчика, mac и crc из данных
                                 packet = packet[2:len(packet) - 12]
+                                # Если нет флага "Рабочий ключ"
                                 if not encrypted_work_key:
                                     # Расшифровка мастер ключом
                                     decode_packet = self._decrypt_with_master_key(address, packet, s_counter)
                                 else:
-                                    if not (self.work_key_out_counter[address] and self.work_key_in_counter[address]):
+                                    # Если значения СЧРК пустые
+                                    if not self.new_wkey_saved:
                                         decode = "Ошибка, не получен счетчик рабочего ключа"
                                         decode_packet = ""
                                     else:
@@ -485,8 +496,16 @@ class DataProcessing:
         # Инкрементируем значения счетчиков после получения пакета при этом сравниваем значение младшего байта
         if (self.mac[0] == self.give_addr[address]) and (s_counter != self.work_key_out_counter[address][:2]):
             self.work_key_out_counter[address] = self._convert_and_increment(self.work_key_out_counter[address])
+            if s_counter != self.work_key_out_counter[address][:2]:
+                self.work_key_out_counter[address] = s_counter + self.work_key_out_counter[address][2:]
+                if s_counter == self.work_key_out_counter[address][:2]:
+                    self.main_gui.update_message_area(f"Восстановление СЧРК_{address}_out заменой, проверьте корректность расшифровки")
         elif (self.mac[1] == self.give_addr[address]) and (s_counter != self.work_key_in_counter[address][:2]):
             self.work_key_in_counter[address] = self._convert_and_increment(self.work_key_in_counter[address])
+            if s_counter != self.work_key_in_counter[address][:2]:
+                self.work_key_in_counter[address] = s_counter + self.work_key_in_counter[address][2:]
+                if s_counter == self.work_key_in_counter[address][:2]:
+                    self.main_gui.update_message_area(f"Восстановление СЧРК_{address}_in заменой, проверьте корректность расшифровки")
 
         if self.mac[0] == self.give_addr[address]:
             # Получаем начальный вектор расшифровки из saf+daf+SCNum
@@ -501,8 +520,12 @@ class DataProcessing:
         return decode_packet
 
     def _decrypt_with_master_key(self, address, packet, s_counter):
-        if (s_counter != self.master_key_counter[address][:2]) and (self.work_key_out_counter[address] and self.work_key_in_counter[address]):
+        if s_counter != self.master_key_counter[address][:2]: #and (self.work_key_out_counter[address] and self.work_key_in_counter[address]):
             self.master_key_counter[address] = self._convert_and_increment(self.master_key_counter[address])
+            if s_counter != self.master_key_counter[address][:2]:
+                self.master_key_counter[address] = s_counter + self.master_key_counter[address][2:]
+                if s_counter == self.master_key_counter[address][:2]:
+                    self.main_gui.update_message_area(f"Восстановление СЧМК_{address} заменой, проверьте корректность расшифровки")
         # Получаем начальный вектор расшифровки из saf+daf+SCNum
         init_vector = self.mac[0] + self.mac[1] + self.master_key_counter[address]
         # Расшифровка пакета
@@ -520,6 +543,8 @@ class DataProcessing:
         elif self.mac[1] == self.give_addr[address]:
             self.work_key_out[address] = hex_string[work_key_shift:]
             self.work_key_out_counter[address] = hex_string[work_key_shift - 8:work_key_shift]
+        # Ставим флаг, что ключ получен
+        self.new_wkey_saved = True
         return decode_packet
 
     def _decrypt_aes(self, init_vector_str, key_str, data_str):
