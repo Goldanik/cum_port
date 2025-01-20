@@ -499,13 +499,13 @@ class DataProcessing:
             if s_counter != self.work_key_out_counter[address][:2]:
                 self.work_key_out_counter[address] = s_counter + self.work_key_out_counter[address][2:]
                 if s_counter == self.work_key_out_counter[address][:2]:
-                    self.main_gui.update_message_area(f"Восстановление СЧРК_{address}_out заменой, проверьте корректность расшифровки")
+                    self.main_gui.update_message_area(f"Восстановление СЧРК исходящих, для прибора с адресом {address}. Проверьте корректность расшифровки")
         elif (self.mac[1] == self.give_addr[address]) and (s_counter != self.work_key_in_counter[address][:2]):
             self.work_key_in_counter[address] = self._convert_and_increment(self.work_key_in_counter[address])
             if s_counter != self.work_key_in_counter[address][:2]:
                 self.work_key_in_counter[address] = s_counter + self.work_key_in_counter[address][2:]
                 if s_counter == self.work_key_in_counter[address][:2]:
-                    self.main_gui.update_message_area(f"Восстановление СЧРК_{address}_in заменой, проверьте корректность расшифровки")
+                    self.main_gui.update_message_area(f"Восстановление СЧРК входящих, для прибора с адресом {address}. Проверьте корректность расшифровки")
 
         if self.mac[0] == self.give_addr[address]:
             # Получаем начальный вектор расшифровки из saf+daf+SCNum
@@ -525,7 +525,7 @@ class DataProcessing:
             if s_counter != self.master_key_counter[address][:2]:
                 self.master_key_counter[address] = s_counter + self.master_key_counter[address][2:]
                 if s_counter == self.master_key_counter[address][:2]:
-                    self.main_gui.update_message_area(f"Восстановление СЧМК_{address} заменой, проверьте корректность расшифровки")
+                    self.main_gui.update_message_area(f"Восстановление СЧМК для прибора с адресом {address}. Проверьте корректность расшифровки")
         # Получаем начальный вектор расшифровки из saf+daf+SCNum
         init_vector = self.mac[0] + self.mac[1] + self.master_key_counter[address]
         # Расшифровка пакета

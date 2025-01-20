@@ -2,11 +2,85 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog
 import queue
+from abc import ABC, abstractmethod
 
 # Свои реализации
 import serial_port
 import file_logger
 import data_processing
+
+class GUIManager(ABC):
+    """Абстрактный класс для управления GUI."""
+
+    @abstractmethod
+    def update_message_area(self, message: str):
+        """Обновляет область сообщений."""
+        pass
+
+    @abstractmethod
+    def update_data_area(self, formatted_data: str):
+        """Обновляет область данных."""
+        pass
+
+    @abstractmethod
+    def update_counters(self):
+        """Обновляет счетчики."""
+        pass
+
+    @abstractmethod
+    def get_encoding(self) -> str:
+        """Возвращает текущую кодировку."""
+        pass
+
+    @abstractmethod
+    def get_port_settings(self) -> dict:
+        """Возвращает настройки порта."""
+        pass
+
+    @abstractmethod
+    def open_port_button_callback(self, callback):
+        """Устанавливает callback для кнопки открытия порта."""
+        pass
+
+    @abstractmethod
+    def close_port_button_callback(self, callback):
+        """Устанавливает callback для кнопки закрытия порта."""
+        pass
+
+    @abstractmethod
+    def refresh_ports_callback(self, callback):
+        """Устанавливает callback для кнопки обновления портов."""
+        pass
+
+    @abstractmethod
+    def open_file_callback(self, callback):
+        """Устанавливает callback для кнопки открытия файла."""
+        pass
+
+    @abstractmethod
+    def clear_screen_callback(self, callback):
+        """Устанавливает callback для кнопки очистки экрана."""
+        pass
+
+    @abstractmethod
+    def toggle_column_visibility_callback(self, callback):
+        """Устанавливает callback для переключения видимости столбцов."""
+        pass
+
+    @abstractmethod
+    def hide_columns_on_encoding_callback(self, callback):
+        """Устанавливает callback для скрытия столбцов при смене кодировки."""
+        pass
+
+    @abstractmethod
+    def copy_selection_callback(self, callback):
+        """Устанавливает callback для копирования выделенных данных."""
+        pass
+
+    @abstractmethod
+    def start_gui(self):
+        """Запускает GUI."""
+        pass
 
 class SerialMonitorGUI:
     def __init__(self, gui, logger_queue, data_proc_queue):
@@ -57,7 +131,7 @@ class SerialMonitorGUI:
         self.gui.title("CUM-port")
         self.gui.geometry("1270x750")
         self.gui.minsize(1270,750)
-        self.version = "Версия: 1.02"
+        self.version = "Версия: 1.03"
 
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
@@ -106,13 +180,21 @@ class SerialMonitorGUI:
         stretchable_frame = tk.Frame(self.gui, bg="white")
         stretchable_frame.grid(row=0, column=1, sticky="nsew")
 
-        # Рамка для настроек COM-порта
-        settings_frame = ttk.LabelFrame(fixed_frame, text="Настройки COM-порта")
-        settings_frame.grid(row=0, column=0, padx=10, pady=5, sticky="nwe")
+        # Рамка настройки интерфейса
+        interface_frame = ttk.LabelFrame(fixed_frame, text="Настройки интерфейса:")
+        interface_frame.grid(row=0, column=0, padx=10, pady=5, sticky="nwe")
 
-        # Имена и поля ввода для параметров
-        ttk.Label(settings_frame, text="Порт:").grid(row=0, column=0, sticky="w")
-        self.port_combobox = ttk.Combobox(settings_frame, textvariable=self.port, width=8)
+        # Создаем панель вкладок Notebook
+        notebook = ttk.Notebook(interface_frame)
+        notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nwe")
+
+        # Первая вкладка: Настройки COM-порта
+        com_settings_frame = ttk.Frame(notebook)
+        notebook.add(com_settings_frame, text="COM-порт")
+
+        # Имена и поля ввода для параметров COM-порта
+        ttk.Label(com_settings_frame, text="Порт:").grid(row=0, column=0, sticky="w")
+        self.port_combobox = ttk.Combobox(com_settings_frame, textvariable=self.port, width=8)
         self.port_combobox.grid(row=0, column=1, padx=5)
         # Устанавливаем список портов
         self.port_combobox['values'] = self.serial_port.get_available_ports()
@@ -120,25 +202,63 @@ class SerialMonitorGUI:
         self.port_combobox.state(['readonly'])
 
         # Кнопка обновить список портов
-        refresh_ports_button = ttk.Button(settings_frame, text=u'\u21bb', command=self._refresh_ports, width=4)
+        refresh_ports_button = ttk.Button(com_settings_frame, text=u'\u21bb', command=self._refresh_ports, width=4)
         refresh_ports_button.grid(row=0, column=2, padx=5)
 
-        ttk.Label(settings_frame, text="Скорость:").grid(row=1, column=0, sticky="w")
-        ttk.Combobox(settings_frame, textvariable=self.baud_rate, values=self.baud_rate_list,
+        ttk.Label(com_settings_frame, text="Скорость:").grid(row=1, column=0, sticky="w")
+        ttk.Combobox(com_settings_frame, textvariable=self.baud_rate, values=self.baud_rate_list,
                      width=8).grid(row=1, column=1, padx=5)
 
-        ttk.Label(settings_frame, text="Биты данных:").grid(row=2, column=0, sticky="w")
-        ttk.Combobox(settings_frame, textvariable=self.databits, values=self.databits_list, width=8).grid(row=2, column=1, padx=5)
+        ttk.Label(com_settings_frame, text="Биты данных:").grid(row=2, column=0, sticky="w")
+        ttk.Combobox(com_settings_frame, textvariable=self.databits, values=self.databits_list, width=8).grid(row=2,
+                                                                                                              column=1,
+                                                                                                              padx=5)
 
-        ttk.Label(settings_frame, text="Четность:").grid(row=3, column=0, sticky="w")
-        ttk.Combobox(settings_frame, textvariable=self.parity, values=self.parity_list, width=8).grid(row=3, column=1, padx=5)
+        ttk.Label(com_settings_frame, text="Четность:").grid(row=3, column=0, sticky="w")
+        ttk.Combobox(com_settings_frame, textvariable=self.parity, values=self.parity_list, width=8).grid(row=3,
+                                                                                                          column=1,
+                                                                                                          padx=5)
 
-        ttk.Label(settings_frame, text="Стоп-биты:").grid(row=4, column=0, sticky="w")
-        ttk.Combobox(settings_frame, textvariable=self.stop_bits, values=self.stop_bits_list, width=8).grid(row=4, column=1, padx=5)
+        ttk.Label(com_settings_frame, text="Стоп-биты:").grid(row=4, column=0, sticky="w")
+        ttk.Combobox(com_settings_frame, textvariable=self.stop_bits, values=self.stop_bits_list, width=8).grid(row=4,
+                                                                                                                column=1,
+                                                                                                                padx=5)
 
         # Кнопка "Открыть порт"
-        self.open_button = ttk.Button(settings_frame, text="Открыть порт", command=self._attempt_open_port, width=20)
+        self.open_button = ttk.Button(com_settings_frame, text="Открыть порт", command=self._attempt_open_port, width=20)
         self.open_button.grid(row=5, column=0, columnspan=2, pady=5, sticky="we")
+
+        # Вторая вкладка: UDP
+        udp_frame = ttk.Frame(notebook)
+        notebook.add(udp_frame, text="UDP")
+
+        # Добавляем элементы для настройки UDP
+        ttk.Label(udp_frame, text="IP-адрес:").grid(row=0, column=0, sticky="w")
+        self.udp_ip_entry = ttk.Entry(udp_frame, width=15)
+        self.udp_ip_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        ttk.Label(udp_frame, text="Порт:").grid(row=1, column=0, sticky="w")
+        self.udp_port_entry = ttk.Entry(udp_frame, width=15)
+        self.udp_port_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Кнопка для UDP
+        self.udp_button = ttk.Button(udp_frame, text="Подключиться", #command=self._connect_udp,
+                                     width=20)
+        self.udp_button.grid(row=2, column=0, columnspan=2, pady=5, sticky="we")
+
+        # Третья вкладка: Bluetooth
+        bluetooth_frame = ttk.Frame(notebook)
+        notebook.add(bluetooth_frame, text="Bluetooth")
+
+        # Добавляем элементы для настройки Bluetooth
+        ttk.Label(bluetooth_frame, text="Устройство:").grid(row=0, column=0, sticky="w")
+        self.bluetooth_device_entry = ttk.Entry(bluetooth_frame, width=15)
+        self.bluetooth_device_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Кнопка для Bluetooth
+        self.bluetooth_button = ttk.Button(bluetooth_frame, text="Подключиться", #command=self._connect_bluetooth,
+                                           width=20)
+        self.bluetooth_button.grid(row=1, column=0, columnspan=2, pady=5, sticky="we")
 
         # Рамка разных настроек в две колонки
         double_column_frame = ttk.LabelFrame(fixed_frame, text="Разное:")
@@ -219,6 +339,11 @@ class SerialMonitorGUI:
 
         # Таблица вывода данных
         self.tree = ttk.Treeview(tree_frame, columns=[col[0] for col in self.data_columns], show="headings")
+
+        # Настраиваем чередующиеся цвета строк
+        self.tree.tag_configure('oddrow', background='#EEEEEE')
+        self.tree.tag_configure('evenrow', background='#FFFFFF')
+
         # Заполняем заголовки и ширину столбцов
         for column_id, column_name, column_width in self.data_columns:
             self.tree.heading(column_id, text=column_name)
@@ -284,6 +409,14 @@ class SerialMonitorGUI:
         self.gui.grid_rowconfigure(0, weight=1)
         self.gui.grid_columnconfigure(0, weight=0)
         self.gui.grid_columnconfigure(1, weight=1)
+
+    def _set_row_colors(self):
+        """Раскраска строк при добавлении данных"""
+        for i, item in enumerate(self.tree.get_children()):
+            if i % 2 == 0:
+                self.tree.item(item, tags=('evenrow',))
+            else:
+                self.tree.item(item, tags=('oddrow',))
 
     def _open_file(self):
         """Открывает текстовый файл, читает его содержимое и отправляет данные в очередь."""
@@ -479,6 +612,9 @@ class SerialMonitorGUI:
 
         # Добавляем строку в таблицу
         self.tree.insert('', 'end', values=values)
+
+        # Обновляем раскраску строк
+        self._set_row_colors()
 
         # Выполняем автопрокрутку, только если галочка включена
         if self.autoscroll_enabled.get():
