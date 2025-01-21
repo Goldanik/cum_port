@@ -144,7 +144,7 @@ class SerialMonitorGUI:
         self.custom_skip_pattern = tk.StringVar(value="")
 
         # Размер таблицы на экране
-        self.MAX_TABLE_SIZE = 50000
+        self.MAX_TABLE_SIZE = 10000
 
         # Переменные для состояния галочек видимости столбцов
         self.column_visibility = {}
