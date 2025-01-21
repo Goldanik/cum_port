@@ -107,7 +107,7 @@ class SerialMonitorGUI:
         # Передаем тот же экземпляр GUI в другие компоненты
         self.serial_port = serial_port.SerialPort(data_queue, on_error=self.update_message_area)
         self.data_proc = data_processing.DataProcessing(data_proc_queue=data_queue, logger_queue=log_queue, main_gui=self)
-        self.file_logger = file_logger.FileLogger(log_queue, on_error=self.update_message_area)
+        self.file_logger = file_logger.FileLogger(log_queue, on_error=self.update_message_area, on_file_size_exceeded=self._restart_logger)
 
         # Переменные для настроек COM-порта
         self.port = tk.StringVar()
@@ -144,7 +144,7 @@ class SerialMonitorGUI:
         self.custom_skip_pattern = tk.StringVar(value="")
 
         # Размер таблицы на экране
-        self.MAX_TABLE_SIZE = 10000
+        self.MAX_TABLE_SIZE = 1000
 
         # Переменные для состояния галочек видимости столбцов
         self.column_visibility = {}
@@ -457,6 +457,13 @@ class SerialMonitorGUI:
                 self.data_proc.start_data_processing()
             except Exception as e:
                 self.update_message_area(f"Ошибка при чтении файла: {e}")
+
+    def _restart_logger(self):
+        """Перезапускает логгер с созданием нового файла."""
+        self.file_logger.stop()
+        self.file_logger.start()
+        self._clear_screen()
+        self.update_message_area("Размер лог-файла превысил 5 МБ. Очищены счетчики и создан новый файл.")
 
     def _toggle_column_visibility(self, column_id):
         """Переключает видимость столбца в зависимости от состояния галочки."""

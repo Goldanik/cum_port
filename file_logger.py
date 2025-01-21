@@ -10,11 +10,16 @@ class FileLogger:
     и управление потоком логирования.
     """
 
-    def __init__(self, data_queue: queue.Queue, on_error=None):
+    def __init__(self, data_queue: queue.Queue, on_error=None, on_file_size_exceeded=None):
         """Инициализация объекта FileLogger."""
         # Основные компоненты
         self._data_queue = data_queue
+        # Callback для уведомления об ошибках
         self._on_error = on_error
+        # Callback для уведомления о превышении размера файла
+        self._on_file_size_exceeded = on_file_size_exceeded
+        # Максимальный размер файла лога
+        self._file_size_limit = 5 * 1024 * 1024  # 5 MB в байтах
 
         # Управление потоком
         self._log_thread = None
@@ -30,6 +35,9 @@ class FileLogger:
         self._file_extension = '.txt'
         self._timestamp = ''
         self._current_log_path = ''
+
+        # Таймер для проверки размера файла
+        self._size_check_timer = None
 
         # Создаем директорию для логов при инициализации
         self._ensure_log_directory()
@@ -72,9 +80,16 @@ class FileLogger:
         self._log_thread = threading.Thread(target=self._logging_worker, daemon=True)
         self._log_thread.start()
 
+        # Запускаем таймер для проверки размера файла
+        self._start_size_check_timer()
+
     def stop(self):
         """Останавливает поток логирования и сбрасывает оставшийся буфер."""
         self._stop_event.set()
+
+        # Останавливаем таймер
+        if self._size_check_timer:
+            self._size_check_timer.cancel()
 
         # Ждем завершения потока
         if self._log_thread and self._log_thread.is_alive():
@@ -83,6 +98,21 @@ class FileLogger:
         # Записываем оставшиеся данные
         self._flush_buffer()
         self._data_queue.queue.clear()
+
+    def _start_size_check_timer(self):
+        """Запускает таймер для проверки размера файла."""
+        self._size_check_timer = threading.Timer(1.0, self._check_file_size)
+        self._size_check_timer.start()
+
+    def _check_file_size(self):
+        """Проверяет размер файла и вызывает callback, если он превышает 5 МБ."""
+        if os.path.exists(self._current_log_path):
+            file_size = os.path.getsize(self._current_log_path)
+            if file_size > self._file_size_limit:  # 5 МБ
+                if self._on_file_size_exceeded:
+                    self._on_file_size_exceeded()
+        # Перезапускаем таймер
+        self._start_size_check_timer()
 
     def _logging_worker(self):
         """Фоновый поток для обработки и записи данных лога."""
