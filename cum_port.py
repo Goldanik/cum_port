@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 import serial_port
 import file_logger
 import data_processing
+import udp_connection
 
 class GUIManager(ABC):
     """Абстрактный класс для управления GUI."""
@@ -106,6 +107,7 @@ class SerialMonitorGUI:
         self.data_queue = data_proc_queue
         # Передаем тот же экземпляр GUI в другие компоненты
         self.serial_port = serial_port.SerialPort(data_queue, on_error=self.update_message_area)
+        self.udp_connection = udp_connection.UDPConnection(data_queue, on_error=self.update_message_area)
         self.data_proc = data_processing.DataProcessing(data_proc_queue=data_queue, logger_queue=log_queue, main_gui=self)
         self.file_logger = file_logger.FileLogger(log_queue, on_error=self.update_message_area, on_file_size_exceeded=self._restart_logger)
 
@@ -131,7 +133,7 @@ class SerialMonitorGUI:
         self.gui.title("CUM-port")
         self.gui.geometry("1270x750")
         self.gui.minsize(1270,750)
-        self.version = "Версия: 1.04"
+        self.version = "Версия: 1.05"
 
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
@@ -232,18 +234,21 @@ class SerialMonitorGUI:
         udp_frame = ttk.Frame(notebook)
         notebook.add(udp_frame, text="UDP")
 
+        # Переменные для хранения значений
+        self.udp_ip_var = tk.StringVar(value="192.168.66.1")
+        self.udp_port_var = tk.StringVar(value="40001")
+
         # Добавляем элементы для настройки UDP
         ttk.Label(udp_frame, text="IP-адрес:").grid(row=0, column=0, sticky="w")
-        self.udp_ip_entry = ttk.Entry(udp_frame, width=15)
+        self.udp_ip_entry = ttk.Entry(udp_frame, textvariable=self.udp_ip_var, width=15)
         self.udp_ip_entry.grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Label(udp_frame, text="Порт:").grid(row=1, column=0, sticky="w")
-        self.udp_port_entry = ttk.Entry(udp_frame, width=15)
+        self.udp_port_entry = ttk.Entry(udp_frame, textvariable=self.udp_port_var, width=15)
         self.udp_port_entry.grid(row=1, column=1, padx=5, pady=5)
 
         # Кнопка для UDP
-        self.udp_button = ttk.Button(udp_frame, text="In progress", #command=self._connect_udp,
-                                     width=20)
+        self.udp_button = ttk.Button(udp_frame, text="Подключиться", command=self._connect_udp, width=20)
         self.udp_button.grid(row=2, column=0, columnspan=2, pady=5, sticky="we")
 
         # Третья вкладка: Bluetooth
@@ -497,6 +502,41 @@ class SerialMonitorGUI:
                 for column_id, column_name, column_width in self.data_columns[2:]:
                     self.column_visibility[column_id].set(False)
                     self._toggle_column_visibility(column_id)
+
+    def _connect_udp(self):
+        """Подключение к UDP"""
+        # Получаем IP и порт из полей ввода
+        ip = self.udp_ip_entry.get()
+        try:
+            port = int(self.udp_port_entry.get())
+        except ValueError:
+            self.update_message_area("Некорректный порт")
+            return
+
+        # Очистка счетчиков
+        self._clear_screen()
+
+        try:
+            # Открываем UDP соединение
+            self.udp_connection.open_connection(ip, port)
+
+            if self.udp_connection.is_open():
+                self.udp_button.config(text="Отключить", command=self._disconnect_udp)
+                # Запускаем поток обработчика
+                self.data_proc.start_data_processing()
+                # Запускаем поток логера
+                self.file_logger.start()
+                self.update_message_area(f"UDP подключен {ip}:{port}")
+        except Exception as e:
+            self.update_message_area(f"Ошибка подключения UDP: {e}")
+
+    def _disconnect_udp(self):
+        """Отключение от UDP"""
+        self.udp_connection.close_connection()
+        self.data_proc.stop_data_processing()
+        self.file_logger.stop()
+        self.udp_button.config(text="Подключиться", command=self._connect_udp)
+        self.update_message_area("UDP отключен")
 
     def _attempt_open_port(self):
         """Открытие последовательного порта"""

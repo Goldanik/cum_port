@@ -92,6 +92,7 @@ class DataProcessing:
         # Счетчик для пользовательского фильтра
         self.counter_custom = 0
 
+        # 68656c6c6f207069736b61000a тестовая строка для ASCII
         # Длина в байтах обрезки не шифрованных кодировок (ASCII и HEX)
         self.unparsed_encoding_data_size = 100
 
@@ -146,10 +147,11 @@ class DataProcessing:
                     else:
                         try:
                             additional_buffer = self.data_proc_queue.get(timeout=1)
-                        except queue.Empty:
+                            current_buffer += additional_buffer
                             continue
-                        current_buffer += additional_buffer
-                        continue
+                        except queue.Empty:
+                            packet = current_buffer.hex()
+                            current_buffer = b''
                     self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
                     self.update_gui_and_log(packet, "", "", "", "", "")
             elif encoding == "ASCII":
