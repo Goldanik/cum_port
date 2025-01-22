@@ -131,7 +131,7 @@ class SerialMonitorGUI:
         self.gui.title("CUM-port")
         self.gui.geometry("1270x750")
         self.gui.minsize(1270,750)
-        self.version = "Версия: 1.03"
+        self.version = "Версия: 1.04"
 
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
@@ -242,7 +242,7 @@ class SerialMonitorGUI:
         self.udp_port_entry.grid(row=1, column=1, padx=5, pady=5)
 
         # Кнопка для UDP
-        self.udp_button = ttk.Button(udp_frame, text="Подключиться", #command=self._connect_udp,
+        self.udp_button = ttk.Button(udp_frame, text="In progress", #command=self._connect_udp,
                                      width=20)
         self.udp_button.grid(row=2, column=0, columnspan=2, pady=5, sticky="we")
 
@@ -256,7 +256,7 @@ class SerialMonitorGUI:
         self.bluetooth_device_entry.grid(row=0, column=1, padx=5, pady=5)
 
         # Кнопка для Bluetooth
-        self.bluetooth_button = ttk.Button(bluetooth_frame, text="Подключиться", #command=self._connect_bluetooth,
+        self.bluetooth_button = ttk.Button(bluetooth_frame, text="In progress", #command=self._connect_bluetooth,
                                            width=20)
         self.bluetooth_button.grid(row=1, column=0, columnspan=2, pady=5, sticky="we")
 
@@ -421,7 +421,7 @@ class SerialMonitorGUI:
     def _open_file(self):
         """Открывает текстовый файл, читает его содержимое и отправляет данные в очередь."""
         if self.serial_port.is_open and self.mac_addr[0]:
-            self.update_message_area(f"Закройте COM-порт и очистите экран если работали с портом. Очистите экран если работали с файлом.")
+            self.update_message_area(f"Закройте COM-порт и очистите экран если работали с портом, если работали с файлом очистите экран.")
         else:
             try:
                 # Открываем диалог выбора файла
@@ -481,19 +481,22 @@ class SerialMonitorGUI:
 
     def _hide_columns_on_encoding(self):
         """Отключает столбцы и меняет их ширину в таблице данных в зависимости от выбранной кодировки."""
-        if self.encoding.get() == "O2":
-            # В кодировке о2 включаем все столбцы со стандартной заданной шириной
-            for column_id, column_name, column_width in self.data_columns:
-                self.tree.column(column_id, width=column_width, stretch=False)
-                self.column_visibility[column_id].set(True)
-                self._toggle_column_visibility(column_id)
+        if self.serial_port.is_open and self.mac_addr[0]:
+            self.update_message_area(f"Закройте COM-порт и очистите экран если работали с портом, если работали с файлом очистите экран.")
         else:
-            # Для кодировок ASCI и HEX выключаем все столбцы кроме времени и сырых данных
-            self.tree.column("time", width=100, stretch=False, anchor="center")
-            self.tree.column("raw_data", width=600)
-            for column_id, column_name, column_width in self.data_columns[2:]:
-                self.column_visibility[column_id].set(False)
-                self._toggle_column_visibility(column_id)
+            if self.encoding.get() == "O2":
+                # В кодировке о2 включаем все столбцы со стандартной заданной шириной
+                for column_id, column_name, column_width in self.data_columns:
+                    self.tree.column(column_id, width=column_width, stretch=False)
+                    self.column_visibility[column_id].set(True)
+                    self._toggle_column_visibility(column_id)
+            else:
+                # Для кодировок ASCI и HEX выключаем все столбцы кроме времени и сырых данных
+                self.tree.column("time", width=100, stretch=False, anchor="center")
+                self.tree.column("raw_data", width=600)
+                for column_id, column_name, column_width in self.data_columns[2:]:
+                    self.column_visibility[column_id].set(False)
+                    self._toggle_column_visibility(column_id)
 
     def _attempt_open_port(self):
         """Открытие последовательного порта"""
@@ -630,6 +633,9 @@ class SerialMonitorGUI:
         # Удаляем старые строки, если превышен лимит
         if len(self.tree.get_children()) > self.MAX_TABLE_SIZE:
             self.tree.delete(self.tree.get_children()[0])
+            # Если автопрокрутка отключена, сдвигаем вверх по мере удаления строк, чтобы зафиксировать экран
+            if not self.autoscroll_enabled.get():
+                self.tree.yview_scroll(number=-1, what="units")
 
     def _process_gui_queue(self):
         """Обработчик очереди гуи и отрисовка данных"""

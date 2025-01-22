@@ -408,7 +408,8 @@ class DataProcessing:
                                         decode_packet = self._decrypt_with_work_key(address, packet, s_counter)
                                         # Уточняем тип пакета
                                         if packet_type == "DT_SERV":
-                                            packet_subtype = decode_packet[2]
+                                            # Убираем биты не относящиеся к подтипу пакета
+                                            packet_subtype = decode_packet[2] & 0b00111111
                                             if packet_subtype in self.serv_cmd_types:
                                                 packet_type += self.serv_cmd_types[packet_subtype]
                                             else:
@@ -418,7 +419,8 @@ class DataProcessing:
                                                 # Сохраняем значение счетчика мастер ключа
                                                 self.master_key_counter[address] = packet[6:14]
                                         elif packet_type == "DT_DATA":
-                                            packet_subtype = decode_packet[1]
+                                            # Убираем биты не относящиеся к подтипу пакета
+                                            packet_subtype = decode_packet[1] & 0b00111111
                                             if packet_subtype in self.data_cmd_types:
                                                 packet_type += self.data_cmd_types[packet_subtype]
                                             else:
