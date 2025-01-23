@@ -1,4 +1,4 @@
-﻿cum_port.spec
+﻿*.spec
 logs/
 dist/
 build/

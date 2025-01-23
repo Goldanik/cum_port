@@ -83,6 +83,9 @@ class GUIManager(ABC):
         """Запускает GUI."""
         pass
 
+__version__ = "1.07"
+__app_name__ = "CUM-port"
+
 class SerialMonitorGUI:
     def __init__(self, gui, logger_queue, data_proc_queue):
         # Кнопки
@@ -134,10 +137,10 @@ class SerialMonitorGUI:
 
         # Присваиваем себе функционал ткинтера
         self.gui = gui
-        self.gui.title("CUM-port")
+        self.gui.title(__app_name__)
+        self.gui.iconbitmap("icon_small.ico")
         self.gui.geometry("1270x750")
         self.gui.minsize(1270,750)
-        self.version = "Версия: 1.06"
 
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
@@ -400,7 +403,7 @@ class SerialMonitorGUI:
         scrollbar_message.config(command=self.message_area.yview)
 
         # Информационная строка
-        info_label = ttk.Label(stretchable_frame, text=f"{self.version}    tg:@danyagolovanov", anchor="e")
+        info_label = ttk.Label(stretchable_frame, text=f"Версия: {__version__}    tg:@danyagolovanov", anchor="e")
         info_label.grid(row=3, column=0, padx=10, pady=5, sticky="we")
 
         # Фиксируем строки внутри фиксированного фрейма
@@ -727,9 +730,6 @@ main = tk.Tk()
 app = SerialMonitorGUI(main, logger_queue=log_queue, data_proc_queue=data_queue)
 # Запускаем главный цикл
 main.mainloop()
-
-# Сборка
-# pyinstaller --onefile -w cum_port.py
 
 # Отладка
 # py -m cProfile -o profile_output.prof cum_port.py
