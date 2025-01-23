@@ -156,27 +156,43 @@ class DataProcessing:
                     self.update_gui_and_log(packet, "", "", "", "", "")
             elif encoding == "ASCII":
                 try:
+                    incomplete_line = ""  # Буфер для хранения неполной строки
                     while current_buffer and not self.data_process_event.is_set():
-                        end = current_buffer.find(b"\x0a", 0)
-                        #self.main_gui.update_message_area(f"Данные на парсинг: {len(decoded_data)}, {decoded_data}, {end}")
-                        if end == -1 or end == 0:
-                            if len(current_buffer) > self.unparsed_encoding_data_size:
-                                # Берём данные фиксированной длины
-                                packet = current_buffer[:self.unparsed_encoding_data_size].decode("ascii", errors="ignore")
-                                current_buffer = current_buffer[self.unparsed_encoding_data_size:]
-                            else:
-                                try:
-                                    additional_buffer = self.data_proc_queue.get(timeout=1)
-                                except queue.Empty:
-                                    continue  # Если нет данных, продолжаем ожидание
-                                current_buffer += additional_buffer
+                        # Декодируем текущий буфер и добавляем к неполной строке
+                        decoded_data = current_buffer.decode("ascii", errors="ignore")
+                        full_data = incomplete_line + decoded_data
+                        # Разбиваем на строки
+                        lines = full_data.splitlines()
+                        if not lines:
+                            try:
+                                additional_buffer = self.data_proc_queue.get(timeout=1)
+                                current_buffer = additional_buffer
                                 continue
+                            except queue.Empty:
+                                current_buffer = b''
+                                continue
+                        # Если строк накопилось много лучше их вывести все, чтобы не повесить гуи
+                        if len(lines) > 20:
+                            self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                            self.update_gui_and_log(decoded_data, "", "", "", "", "")
                         else:
-                            # Берём данные до следующего маркера с исключением \n
-                            packet = current_buffer[:end-1].decode("ascii", errors="ignore")
-                            current_buffer = current_buffer[end+1:]
-                        self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                        self.update_gui_and_log(packet,"","","","","")
+                            # Обрабатываем все полные строки кроме последней
+                            for line in lines[:-1]:
+                                if line.strip():  # Выводим только непустые строки
+                                    self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                                    self.update_gui_and_log(line.strip(), "", "", "", "", "")
+                        # Сохраняем последнюю строку как неполную
+                        incomplete_line = lines[-1]
+                        try:
+                            additional_buffer = self.data_proc_queue.get(timeout=1)
+                            current_buffer = additional_buffer
+                        except queue.Empty:
+                            # Если больше данных нет и есть неполная строка - выводим её
+                            if incomplete_line.strip():
+                                self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                                self.update_gui_and_log(incomplete_line.strip(), "", "", "", "", "")
+                            current_buffer = b''
+                            incomplete_line = ""
                 except UnicodeDecodeError:
                     self.main_gui.update_message_area(f"Некорректный символ")
 

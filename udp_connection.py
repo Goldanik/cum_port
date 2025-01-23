@@ -1,3 +1,4 @@
+import selectors
 import socket
 import threading
 import queue
@@ -46,19 +47,19 @@ class UDPConnection:
 
     def close_connection(self):
         """Закрывает UDP соединение и останавливает поток чтения."""
-        self._close_event.set()
+        self._close_event.set()  # Сигнализируем потоку о завершении
 
         if self._udp_thread and self._udp_thread.is_alive():
-            self._udp_thread.join(timeout=1.0)
+            self._udp_thread.join(timeout=1.0)  # Ждем завершения потока
 
         if self._sock:
             try:
-                self._sock.close()
+                self._sock.close()  # Закрываем сокет
             except Exception as e:
                 self._handle_error(f"Ошибка закрытия UDP соединения: {e}")
             finally:
+                self._sock = None  # Освобождаем ресурс
                 self._udp_thread = None
-                self._sock = None
                 self._ip = None
                 self._port = None
 
@@ -76,20 +77,25 @@ class UDPConnection:
         self._udp_thread.start()
 
     def _read_udp(self):
-        """Читает данные из UDP сокета и добавляет их в очередь."""
+        """Читает данные из UDP сокета с помощью селектора."""
+        selector = selectors.DefaultSelector()
+        selector.register(self._sock, selectors.EVENT_READ)
 
         while not self._close_event.is_set():
             try:
-                try:
-                    data, addr = self._sock.recvfrom(self.buffer_size)
+                if self._sock is None or not self.is_open():  # Проверка состояния сокета
+                    break
+                events = selector.select(timeout=0.1)  # Ожидание данных с таймаутом
+                for key, _ in events:
+                    data, addr = key.fileobj.recvfrom(self.buffer_size)
                     if data:
                         try:
                             self._data_queue.put(data, timeout=0.1)
                         except queue.Full:
                             self._handle_error("Очередь данных переполнена. Данные потеряны.")
-                except BlockingIOError:
+            except BlockingIOError:
                     # Нет доступных данных, продолжаем цикл
-                    continue
+                continue
             except Exception as e:
                 self._handle_error(f"Ошибка чтения UDP данных: {e}")
                 self.close_connection()

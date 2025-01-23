@@ -111,6 +111,10 @@ class SerialMonitorGUI:
         self.data_proc = data_processing.DataProcessing(data_proc_queue=data_queue, logger_queue=log_queue, main_gui=self)
         self.file_logger = file_logger.FileLogger(log_queue, on_error=self.update_message_area, on_file_size_exceeded=self._restart_logger)
 
+        # Логическое состояние соединений
+        self.com_port_open = False
+        self.udp_port_open = False
+
         # Переменные для настроек COM-порта
         self.port = tk.StringVar()
         self.baud_rate = tk.IntVar(value=115200)
@@ -133,7 +137,7 @@ class SerialMonitorGUI:
         self.gui.title("CUM-port")
         self.gui.geometry("1270x750")
         self.gui.minsize(1270,750)
-        self.version = "Версия: 1.05"
+        self.version = "Версия: 1.06"
 
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
@@ -227,7 +231,7 @@ class SerialMonitorGUI:
                                                                                                                 padx=5)
 
         # Кнопка "Открыть порт"
-        self.open_button = ttk.Button(com_settings_frame, text="Открыть порт", command=self._attempt_open_port, width=20)
+        self.open_button = ttk.Button(com_settings_frame, text="Открыть порт", command=self._open_com_port, width=20)
         self.open_button.grid(row=5, column=0, columnspan=2, pady=5, sticky="we")
 
         # Вторая вкладка: UDP
@@ -425,8 +429,8 @@ class SerialMonitorGUI:
 
     def _open_file(self):
         """Открывает текстовый файл, читает его содержимое и отправляет данные в очередь."""
-        if self.serial_port.is_open and self.mac_addr[0]:
-            self.update_message_area(f"Закройте COM-порт и очистите экран если работали с портом, если работали с файлом очистите экран.")
+        if self.com_port_open or self.udp_port_open or self.mac_addr[0]:
+            self.update_message_area(f"Для открытия файла, закройте соединение если работали с портом, если работали с файлом очистите экран.")
         else:
             try:
                 # Открываем диалог выбора файла
@@ -486,8 +490,8 @@ class SerialMonitorGUI:
 
     def _hide_columns_on_encoding(self):
         """Отключает столбцы и меняет их ширину в таблице данных в зависимости от выбранной кодировки."""
-        if self.serial_port.is_open and self.mac_addr[0]:
-            self.update_message_area(f"Закройте COM-порт и очистите экран если работали с портом, если работали с файлом очистите экран.")
+        if self.com_port_open or self.udp_port_open or self.mac_addr[0]:
+            self.update_message_area(f"Для смены кодировки, закройте соединение если работали с портом, если работали с файлом очистите экран.")
         else:
             if self.encoding.get() == "O2":
                 # В кодировке о2 включаем все столбцы со стандартной заданной шириной
@@ -505,68 +509,74 @@ class SerialMonitorGUI:
 
     def _connect_udp(self):
         """Подключение к UDP"""
-        # Получаем IP и порт из полей ввода
-        ip = self.udp_ip_entry.get()
-        try:
-            port = int(self.udp_port_entry.get())
-        except ValueError:
-            self.update_message_area("Некорректный порт")
-            return
-
-        # Очистка счетчиков
-        self._clear_screen()
-
-        try:
-            # Открываем UDP соединение
-            self.udp_connection.open_connection(ip, port)
-
-            if self.udp_connection.is_open():
-                self.udp_button.config(text="Отключить", command=self._disconnect_udp)
-                # Запускаем поток обработчика
-                self.data_proc.start_data_processing()
-                # Запускаем поток логера
-                self.file_logger.start()
-                self.update_message_area(f"UDP подключен {ip}:{port}")
-        except Exception as e:
-            self.update_message_area(f"Ошибка подключения UDP: {e}")
+        if self.com_port_open:
+            self.update_message_area(f"Закройте COM-порт для работы с UDP.")
+        else:
+            # Получаем IP и порт из полей ввода
+            ip = self.udp_ip_entry.get()
+            try:
+                port = int(self.udp_port_entry.get())
+            except ValueError:
+                self.update_message_area("Некорректный порт")
+                return
+            # Очистка счетчиков
+            self._clear_screen()
+            try:
+                # Открываем UDP соединение
+                self.udp_connection.open_connection(ip, port)
+                if self.udp_connection.is_open():
+                    self.udp_port_open = True
+                    self.udp_button.config(text="Отключить", command=self._disconnect_udp)
+                    # Запускаем поток обработчика
+                    self.data_proc.start_data_processing()
+                    # Запускаем поток логера
+                    self.file_logger.start()
+                    self.update_message_area(f"UDP подключен {ip}:{port}")
+            except Exception as e:
+                self.update_message_area(f"Ошибка подключения UDP: {e}")
 
     def _disconnect_udp(self):
         """Отключение от UDP"""
+        self.udp_port_open = False
         self.udp_connection.close_connection()
         self.data_proc.stop_data_processing()
         self.file_logger.stop()
         self.udp_button.config(text="Подключиться", command=self._connect_udp)
         self.update_message_area("UDP отключен")
 
-    def _attempt_open_port(self):
+    def _open_com_port(self):
         """Открытие последовательного порта"""
-        # Очистка счетчиков, если не первая попытка открыть порт
-        self._clear_screen()
-        # Открываем порт с заданными параметрами
-        self.serial_port.open_port(
-            port=self.port.get(),
-            baudrate=self.baud_rate.get(),
-            bytesize=self.databits.get(),
-            parity=self.parity.get(),
-            stopbits=self.stop_bits.get(),
-            timeout=0.1
-        )
+        if self.udp_port_open:
+            self.update_message_area(f"Закройте UDP-соединение для работы с COM-портом.")
+        else:
+            # Очистка счетчиков, если не первая попытка открыть порт
+            self._clear_screen()
+            # Открываем порт с заданными параметрами
+            self.serial_port.open_port(
+                port=self.port.get(),
+                baudrate=self.baud_rate.get(),
+                bytesize=self.databits.get(),
+                parity=self.parity.get(),
+                stopbits=self.stop_bits.get(),
+                timeout=0.1
+            )
+            if self.serial_port.is_open:
+                self.com_port_open = True
+                self.open_button.config(text="Закрыть порт", command=self._close_com_port)
+                # Запускаем поток обработчика
+                self.data_proc.start_data_processing()
+                # Запускаем поток логера
+                self.file_logger.start()
+                self.update_message_area(f"Порт {self.port.get()} открыт.")
+            return
 
-        if self.serial_port.is_open:
-            self.open_button.config(text="Закрыть порт", command=self._attempt_close_port)
-            # Запускаем поток обработчика
-            self.data_proc.start_data_processing()
-            # Запускаем поток логера
-            self.file_logger.start()
-            self.update_message_area(f"Порт {self.port.get()} открыт.")
-        return
-
-    def _attempt_close_port(self):
+    def _close_com_port(self):
         """Закрытие последовательного порта"""
+        self.com_port_open = False
         self.serial_port.close_port()
         self.data_proc.stop_data_processing()
         self.file_logger.stop()
-        self.open_button.config(text="Открыть порт", command=self._attempt_open_port)
+        self.open_button.config(text="Открыть порт", command=self._open_com_port)
         self.update_message_area("Порт закрыт.")
 
     def _refresh_ports(self):
