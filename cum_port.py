@@ -1,5 +1,6 @@
 import datetime
 import tkinter as tk
+import webbrowser
 from tkinter import ttk, filedialog
 import queue
 from abc import ABC, abstractmethod
@@ -83,7 +84,7 @@ class GUIManager(ABC):
         """Запускает GUI."""
         pass
 
-__version__ = "1.07"
+__version__ = "1.08"
 __app_name__ = "CUM-port"
 
 class SerialMonitorGUI:
@@ -98,6 +99,7 @@ class SerialMonitorGUI:
         self.encoding = None
         self.autoscroll_enabled = None
         self.file_open = False
+        self.highlight_enabled = False
 
         # Инициализация массивов счетчиков
         self.req_ack_counters = [0] * 32  # Счетчики REQ/ACK для каждого адреса
@@ -117,6 +119,8 @@ class SerialMonitorGUI:
         # Логическое состояние соединений
         self.com_port_open = False
         self.udp_port_open = False
+
+        self.selected_tab = "COM-порт"
 
         # Переменные для настроек COM-порта
         self.port = tk.StringVar()
@@ -194,12 +198,23 @@ class SerialMonitorGUI:
         interface_frame.grid(row=0, column=0, padx=10, pady=5, sticky="nwe")
 
         # Создаем панель вкладок Notebook
-        notebook = ttk.Notebook(interface_frame)
-        notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nwe")
+        self.notebook = ttk.Notebook(interface_frame)
+        self.notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nwe")
 
         # Первая вкладка: Настройки COM-порта
-        com_settings_frame = ttk.Frame(notebook)
-        notebook.add(com_settings_frame, text="COM-порт")
+        com_settings_frame = ttk.Frame(self.notebook)
+        self.notebook.add(com_settings_frame, text="COM-порт")
+
+        # Вторая вкладка: UDP
+        udp_frame = ttk.Frame(self.notebook)
+        self.notebook.add(udp_frame, text="UDP")
+
+        # Третья вкладка: Bluetooth
+        bluetooth_frame = ttk.Frame(self.notebook)
+        self.notebook.add(bluetooth_frame, text="Bluetooth")
+
+        # Привязываем обработчик изменения вкладки
+        self.notebook.bind("<<NotebookTabChanged>>", self._check_tabs)
 
         # Имена и поля ввода для параметров COM-порта
         ttk.Label(com_settings_frame, text="Порт:").grid(row=0, column=0, sticky="w")
@@ -237,11 +252,7 @@ class SerialMonitorGUI:
         self.open_button = ttk.Button(com_settings_frame, text="Открыть порт", command=self._open_com_port, width=20)
         self.open_button.grid(row=5, column=0, columnspan=2, pady=5, sticky="we")
 
-        # Вторая вкладка: UDP
-        udp_frame = ttk.Frame(notebook)
-        notebook.add(udp_frame, text="UDP")
-
-        # Переменные для хранения значений
+        # Переменные для хранения значений UDP
         self.udp_ip_var = tk.StringVar(value="192.168.66.1")
         self.udp_port_var = tk.StringVar(value="40001")
 
@@ -257,10 +268,6 @@ class SerialMonitorGUI:
         # Кнопка для UDP
         self.udp_button = ttk.Button(udp_frame, text="Подключиться", command=self._connect_udp, width=20)
         self.udp_button.grid(row=2, column=0, columnspan=2, pady=5, sticky="we")
-
-        # Третья вкладка: Bluetooth
-        bluetooth_frame = ttk.Frame(notebook)
-        notebook.add(bluetooth_frame, text="Bluetooth")
 
         # Добавляем элементы для настройки Bluetooth
         ttk.Label(bluetooth_frame, text="Устройство:").grid(row=0, column=0, sticky="w")
@@ -294,11 +301,11 @@ class SerialMonitorGUI:
 
         # Кнопки выбора кодировок
         ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2",
-                        command=self._hide_columns_on_encoding).grid(row=0, column=0, sticky="w")
+                        command=self._check_encoding).grid(row=0, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="HEX", variable=self.encoding, value="HEX",
-                        command=self._hide_columns_on_encoding).grid(row=1, column=0, sticky="w")
+                        command=self._check_encoding).grid(row=1, column=0, sticky="w")
         ttk.Radiobutton(encoding_frame, text="ASCII", variable=self.encoding, value="ASCII",
-                        command=self._hide_columns_on_encoding).grid(row=3, column=0, sticky="w")
+                        command=self._check_encoding).grid(row=3, column=0, sticky="w")
 
         # Кнопка "Очистить экран"
         clear_button = ttk.Button(screen_frame, text="Очистить экран", command=self._clear_screen, width=20)
@@ -347,7 +354,7 @@ class SerialMonitorGUI:
 
         # Рамка вывода данных
         tree_frame = ttk.Frame(stretchable_frame)
-        tree_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=(0, 10), sticky="nsew")
+        tree_frame.grid(row=0, column=0, rowspan=2, padx=5, pady=5, sticky="nsew")
 
         # Таблица вывода данных
         self.tree = ttk.Treeview(tree_frame, columns=[col[0] for col in self.data_columns], show="headings")
@@ -365,20 +372,23 @@ class SerialMonitorGUI:
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
 
-        # Сетка таблицы вывода данных
-        self.tree.grid(row=1, column=0, sticky="nsew")
-        vsb.grid(row=1, column=1, sticky="ns")
+        # Добавляем фрейм для поиска и подсветки
+        highlight_frame = ttk.Frame(tree_frame)
+        highlight_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
-        # Веса сетки таблицы вывода данных
-        tree_frame.grid_columnconfigure(0, weight=1)
-        tree_frame.grid_rowconfigure(1, weight=1)
+        ttk.Label(highlight_frame, text="Подсветка строк:").pack(side=tk.LEFT, padx=(0, 5))
 
-        # Создание функционала копирования данных из таблицы по хоткею
-        self.tree.bind('<Control-c>', self._copy_selection)
+        # Добавляем поле ввода для поиска
+        self.search_entry = ttk.Entry(highlight_frame, width=30)
+        self.search_entry.pack(side=tk.LEFT, padx=5)
+
+        # Добавляем кнопку подсветки
+        self.highlight_button = ttk.Button(highlight_frame, text="Включить", command=self._toggle_highlight)
+        self.highlight_button.pack(side=tk.LEFT, padx=5)
 
         # Добавляем фрейм для галочек над таблицей
         column_options_frame = ttk.Frame(tree_frame)
-        column_options_frame.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="w")
+        column_options_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
         # Заголовок для строки с галочками
         ttk.Label(column_options_frame, text="Отображать столбцы:").pack(side=tk.LEFT, padx=(0, 10))
@@ -392,9 +402,27 @@ class SerialMonitorGUI:
             cb.pack(side=tk.LEFT, padx=5)
             self.column_visibility[column_id] = var
 
+        # Сетка таблицы вывода данных
+        self.tree.grid(row=2, column=0, sticky="nsew")
+        vsb.grid(row=2, column=1, sticky="ns")
+
+        # Веса сетки таблицы вывода данных
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(1, weight=1)
+
+        # Создание функционала копирования данных из таблицы по хоткею
+        self.tree.bind('<Control-c>', self._copy_selection)
+
+        # Привязка события прокрутки к дереву после его создания:
+        self.tree.bind('<<TreeviewSelect>>', self._on_treeview_select)
+        self.tree.bind('<Motion>', self._on_treeview_motion)
+
+        # Обработчик закрытия окна
+        self.gui.protocol("WM_DELETE_WINDOW", self._on_app_closing)
+
         # Текстовая строка для вывода сообщений
         message_frame = ttk.Frame(stretchable_frame)
-        message_frame.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="sew")
+        message_frame.grid(row=2, column=0, padx=5, pady=5, sticky="sew")
         scrollbar_message = ttk.Scrollbar(message_frame)
         scrollbar_message.pack(side=tk.RIGHT, fill=tk.Y)
         self.message_area = tk.Text(message_frame, wrap=tk.WORD, height=5,
@@ -403,14 +431,31 @@ class SerialMonitorGUI:
         scrollbar_message.config(command=self.message_area.yview)
 
         # Информационная строка
-        info_label = ttk.Label(stretchable_frame, text=f"Версия: {__version__}    tg:@danyagolovanov", anchor="e")
-        info_label.grid(row=3, column=0, padx=10, pady=5, sticky="we")
+        info_frame = ttk.Frame(stretchable_frame)
+        info_frame.grid(row=3, column=0, padx=10, pady=5, sticky="we")
+
+        # Создаем label-ссылку для телеграма
+        telegram_label = ttk.Label(info_frame, text="tg:@danyagolovanov", cursor="hand2")
+        telegram_label.pack(side=tk.RIGHT)
+
+        # Создаем label для версии
+        version_label = ttk.Label(info_frame, text=f"Версия: {__version__}    ")
+        version_label.pack(side=tk.RIGHT)
+
+        # Добавляем обработчик клика только для телеграм-ссылки
+        telegram_label.bind("<Button-1>", lambda e: webbrowser.open("https://t.me/danyagolovanov"))
 
         # Фиксируем строки внутри фиксированного фрейма
         fixed_frame.grid_rowconfigure(0, weight=0)  # Строка 0 фиксирована
         fixed_frame.grid_rowconfigure(1, weight=0)  # Строка 1 фиксирована
         fixed_frame.grid_rowconfigure(2, weight=0)  # Строка 2 фиксирована
         fixed_frame.grid_columnconfigure(0, weight=0)  # Колонка фиксирована
+
+        # Настраиваем веса строк в tree_frame
+        tree_frame.grid_rowconfigure(0, weight=0)  # фрейм поиска - фиксированный
+        tree_frame.grid_rowconfigure(1, weight=0)  # фрейм галочек - фиксированный
+        tree_frame.grid_rowconfigure(2, weight=1)  # таблица - растягивается
+        tree_frame.grid_columnconfigure(0, weight=1)  # колонка с таблицей - растягивается
 
         # Настраиваем строки внутри растягивающегося фрейма
         stretchable_frame.grid_rowconfigure(0, weight=1)  # Строка 0 растягивается
@@ -422,13 +467,93 @@ class SerialMonitorGUI:
         self.gui.grid_columnconfigure(0, weight=0)
         self.gui.grid_columnconfigure(1, weight=1)
 
-    def _set_row_colors(self):
-        """Раскраска строк при добавлении данных"""
-        for i, item in enumerate(self.tree.get_children()):
-            if i % 2 == 0:
+    def _on_app_closing(self):
+        """Обработчик закрытия окна"""
+        # Останавливаем все активные потоки
+        if self.com_port_open:
+            self._close_com_port()
+        if self.udp_port_open:
+            self._disconnect_udp()
+
+        # Останавливаем логгер
+        self.file_logger.stop()
+
+        # Очищаем очереди
+        self.log_queue.queue.clear()
+        self.data_queue.queue.clear()
+
+        # Закрываем главное окно
+        self.gui.destroy()
+
+    def _toggle_highlight(self):
+        """Переключение режима подсветки"""
+        if not self.search_entry.get().strip():
+            self.update_message_area("Подсветка не включена. Введите текст для поиска.")
+        else:
+            self.highlight_enabled = not self.highlight_enabled
+            if self.highlight_enabled:
+                self.highlight_button.config(text="Подсветка включена")
+                # Блокируем строку ввода
+                self.search_entry.config(state='readonly')
+                self._apply_highlight_to_visible()
+            else:
+                self.highlight_button.config(text="Включить подсветку")
+                # Разблокируем строку ввода
+                self.search_entry.config(state='normal')
+                self._restore_row_colors()
+
+    def _restore_row_colors(self):
+        """Восстановление чередующихся цветов строк"""
+        for idx, item in enumerate(self.tree.get_children()):
+            if idx % 2 == 0:
                 self.tree.item(item, tags=('evenrow',))
             else:
                 self.tree.item(item, tags=('oddrow',))
+
+    def _apply_highlight_to_visible(self):
+        """Применение подсветки к видимым строкам"""
+        if not self.highlight_enabled:
+            return
+
+        search_text = self.search_entry.get().strip().lower()
+        if not search_text:
+            return
+
+        # Получаем информацию о видимой области
+        first_visible = self.tree.yview()[0]
+        last_visible = self.tree.yview()[1]
+        total_rows = len(self.tree.get_children())
+
+        # Вычисляем индексы видимых строк
+        first_idx = int(first_visible * total_rows)
+        last_idx = int(last_visible * total_rows) + 1
+
+        # Получаем все элементы
+        all_items = self.tree.get_children()
+
+        # Создаем/обновляем тег для подсветки
+        self.tree.tag_configure('highlight', background='#ADD8E6')  # Светло-синий цвет
+
+        # Проходим только по видимым строкам
+        for idx, item in enumerate(all_items):
+            if first_idx <= idx <= last_idx:
+                values = [str(value).lower() for value in self.tree.item(item)['values']]
+                row_text = ' '.join(values)
+                if search_text in row_text:
+                    self.tree.item(item, tags=('highlight',))
+
+    def _on_treeview_select(self, event):
+        """Обработчик выделения в дереве"""
+        self._apply_highlight_to_visible()
+
+    def _on_treeview_motion(self, event):
+        """Обработчик движения мыши над деревом"""
+        self._apply_highlight_to_visible()
+
+    def _check_tabs(self, event):
+        """Обработчик изменения вкладки"""
+        self.selected_tab = self.notebook.tab(self.notebook.select(), "text")
+        self._check_encoding()
 
     def _open_file(self):
         """Открывает текстовый файл, читает его содержимое и отправляет данные в очередь."""
@@ -491,17 +616,22 @@ class SerialMonitorGUI:
             self.tree.heading(column_id, text="")  # Очистить заголовок столбца
             self.tree.column(column_id, stretch=False)  # Убедитесь, что столбец не растягивается
 
-    def _hide_columns_on_encoding(self):
+    def _check_encoding(self):
         """Отключает столбцы и меняет их ширину в таблице данных в зависимости от выбранной кодировки."""
         if self.com_port_open or self.udp_port_open or self.mac_addr[0]:
             self.update_message_area(f"Для смены кодировки, закройте соединение если работали с портом, если работали с файлом очистите экран.")
         else:
+            # Проверка открытой вкладки на запрещенные кодировки
+            if ((self.encoding.get() == "O2" and self.selected_tab == "UDP")
+                    or (self.encoding.get() == "O2" and self.udp_port_open)):
+                self.encoding.set("ASCII")
+                self.update_message_area(f"Для UDP соединения кодировка О2 не поддерживается.")
             if self.encoding.get() == "O2":
-                # В кодировке о2 включаем все столбцы со стандартной заданной шириной
-                for column_id, column_name, column_width in self.data_columns:
-                    self.tree.column(column_id, width=column_width, stretch=False)
-                    self.column_visibility[column_id].set(True)
-                    self._toggle_column_visibility(column_id)
+                    # В кодировке о2 включаем все столбцы со стандартной заданной шириной
+                    for column_id, column_name, column_width in self.data_columns:
+                        self.tree.column(column_id, width=column_width, stretch=False)
+                        self.column_visibility[column_id].set(True)
+                        self._toggle_column_visibility(column_id)
             else:
                 # Для кодировок ASCI и HEX выключаем все столбцы кроме времени и сырых данных
                 self.tree.column("time", width=100, stretch=False, anchor="center")
@@ -674,10 +804,21 @@ class SerialMonitorGUI:
             values = ("", "", "", "", "", "", "")
 
         # Добавляем строку в таблицу
-        self.tree.insert('', 'end', values=values)
+        item = self.tree.insert('', 'end', values=values)
 
-        # Обновляем раскраску строк
-        self._set_row_colors()
+        # Применяем чередование строк
+        if len(self.tree.get_children()) % 2 == 0:
+            self.tree.item(item, tags=('evenrow',))
+        else:
+            self.tree.item(item, tags=('oddrow',))
+
+        # Применяем подсветку сразу при добавлении, если она включена
+        if self.highlight_enabled:
+            search_text = self.search_entry.get().strip().lower()
+            if search_text:
+                row_text = ' '.join(str(v).lower() for v in values)
+                if search_text in row_text:
+                    self.tree.item(item, tags=('highlight',))
 
         # Выполняем автопрокрутку, только если галочка включена
         if self.autoscroll_enabled.get():

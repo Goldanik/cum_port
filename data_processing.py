@@ -92,7 +92,7 @@ class DataProcessing:
         # Счетчик для пользовательского фильтра
         self.counter_custom = 0
 
-        # 68656c6c6f207069736b61000a тестовая строка для ASCII
+        # 0a68656c6c6f207069736b610d0d тестовая строка для ASCII
         # Длина в байтах обрезки не шифрованных кодировок (ASCII и HEX)
         self.unparsed_encoding_data_size = 100
 
@@ -102,10 +102,12 @@ class DataProcessing:
     def start_data_processing(self):
         """Запуск отдельного потока для обработки данных"""
         self.data_process_event.clear()
-        encoding = self.main_gui.encoding.get()  # Получаем значение перед запуском потока
+        # Получаем значение перед запуском потока
+        encoding = self.main_gui.encoding.get()
+        interface = self.main_gui.selected_tab
         if not self.data_process_thread or not self.data_process_thread.is_alive():
             self.data_process_thread = threading.Thread(
-                target=self.encodings_handler, args=(encoding,), daemon=True
+                target=self.encodings_handler, args=(encoding,interface,), daemon=True
             )
             self.data_process_thread.start()
 
@@ -126,7 +128,7 @@ class DataProcessing:
         # self.work_key_in = [""] * 32
         # self.give_addr = [""] * 32
 
-    def encodings_handler(self, encoding):
+    def encodings_handler(self, encoding, interface):
         """Обработка кодировок данных"""
         while not self.data_process_event.is_set():
             try:
@@ -156,43 +158,33 @@ class DataProcessing:
                     self.update_gui_and_log(packet, "", "", "", "", "")
             elif encoding == "ASCII":
                 try:
-                    incomplete_line = ""  # Буфер для хранения неполной строки
                     while current_buffer and not self.data_process_event.is_set():
-                        # Декодируем текущий буфер и добавляем к неполной строке
-                        decoded_data = current_buffer.decode("ascii", errors="ignore")
-                        full_data = incomplete_line + decoded_data
-                        # Разбиваем на строки
-                        lines = full_data.splitlines()
-                        if not lines:
-                            try:
-                                additional_buffer = self.data_proc_queue.get(timeout=1)
-                                current_buffer = additional_buffer
-                                continue
-                            except queue.Empty:
-                                current_buffer = b''
-                                continue
-                        # Если строк накопилось много лучше их вывести все, чтобы не повесить гуи
-                        if len(lines) > 20:
-                            self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                            self.update_gui_and_log(decoded_data, "", "", "", "", "")
+                        if interface == "UDP":
+                            end = current_buffer.find(b"\x0d\x0d", 0)
                         else:
-                            # Обрабатываем все полные строки кроме последней
-                            for line in lines[:-1]:
-                                if line.strip():  # Выводим только непустые строки
-                                    self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                                    self.update_gui_and_log(line.strip(), "", "", "", "", "")
-                        # Сохраняем последнюю строку как неполную
-                        incomplete_line = lines[-1]
-                        try:
-                            additional_buffer = self.data_proc_queue.get(timeout=1)
-                            current_buffer = additional_buffer
-                        except queue.Empty:
-                            # Если больше данных нет и есть неполная строка - выводим её
-                            if incomplete_line.strip():
-                                self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
-                                self.update_gui_and_log(incomplete_line.strip(), "", "", "", "", "")
-                            current_buffer = b''
-                            incomplete_line = ""
+                            end = current_buffer.find(b"\x0a", 0)
+                        if end == -1 or end == 0:
+                            if len(current_buffer) > self.unparsed_encoding_data_size:
+                                # Берём данные фиксированной длины
+                                packet = current_buffer[:self.unparsed_encoding_data_size].decode("ascii", errors="ignore")
+                                current_buffer = current_buffer[self.unparsed_encoding_data_size:]
+                            else:
+                                try:
+                                    additional_buffer = self.data_proc_queue.get(timeout=1)
+                                except queue.Empty:
+                                    continue  # Если нет данных, продолжаем ожидание
+                                current_buffer += additional_buffer
+                                continue
+                        else:
+                            if interface == "UDP":
+                                packet = current_buffer[1:end].decode("ascii", errors="ignore")
+                                current_buffer = current_buffer[end + 2:]
+                            else:
+                                # Берём данные до следующего маркера с исключением \n
+                                packet = current_buffer[:end - 1].decode("ascii", errors="ignore")
+                                current_buffer = current_buffer[end + 1:]
+                        self.timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                        self.update_gui_and_log(packet,"","","","","")
                 except UnicodeDecodeError:
                     self.main_gui.update_message_area(f"Некорректный символ")
 
