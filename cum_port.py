@@ -84,7 +84,7 @@ class GUIManager(ABC):
         """Запускает GUI."""
         pass
 
-__version__ = "1.08"
+__version__ = "1.09"
 __app_name__ = "CUM-port"
 
 class SerialMonitorGUI:
@@ -146,8 +146,8 @@ class SerialMonitorGUI:
         self.gui = gui
         self.gui.title(__app_name__)
         self.gui.iconbitmap("icon_small.ico")
-        self.gui.geometry("1270x750")
-        self.gui.minsize(1270,750)
+        self.gui.geometry("1260x600")
+        self.gui.minsize(1260,600)
 
         # Очередь для элементов GUI
         self.gui_queue = queue.Queue()
@@ -212,9 +212,13 @@ class SerialMonitorGUI:
         udp_frame = ttk.Frame(self.notebook)
         self.notebook.add(udp_frame, text="UDP")
 
-        # Третья вкладка: Bluetooth
+        # Третья вкладка: Файл
+        file_frame = ttk.Frame(self.notebook)
+        self.notebook.add(file_frame, text="Файл")
+
+        # Четвертая вкладка: Bluetooth
         bluetooth_frame = ttk.Frame(self.notebook)
-        self.notebook.add(bluetooth_frame, text="Bluetooth")
+        self.notebook.add(bluetooth_frame, text="In progress")
 
         # Привязываем обработчик изменения вкладки
         self.notebook.bind("<<NotebookTabChanged>>", self._check_tabs)
@@ -282,25 +286,24 @@ class SerialMonitorGUI:
                                            width=20)
         self.bluetooth_button.grid(row=1, column=0, columnspan=2, pady=5, sticky="we")
 
-        # Рамка разных настроек в две колонки
-        double_column_frame = ttk.LabelFrame(fixed_frame, text="Разное:")
+        # Рамка настроек в две колонки
+        double_column_frame = ttk.LabelFrame(fixed_frame, text="Настройки:")
         double_column_frame.grid(row=1, column=0, padx=10, pady=5, sticky="nwe")
 
-        # Рамка работы с файлом
-        raw_file_frame = ttk.LabelFrame(double_column_frame, text="Парсинг сырых данных\nиз файла:")
-        raw_file_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nwe")
+        # Инфо по работе с файлом
+        ttk.Label(file_frame, text="Парсинг сырых данных из файла.\nДанные можно записать из интерфейса\nвыбрав кодировку HEX.").grid(row=0, column=0, sticky="w")
 
         # Добавляем кнопку "Открыть файл"
-        clear_button = ttk.Button(raw_file_frame, text="Открыть файл", command=self._open_file, width=20)
-        clear_button.grid(row=0, column=0, padx=5, pady=5, sticky="we")
+        clear_button = ttk.Button(file_frame, text="Открыть файл", command=self._open_file, width=20)
+        clear_button.grid(row=1, column=0, padx=5, pady=5, sticky="we")
 
         # Рамка "Настройки окна вывода"
         screen_frame = ttk.LabelFrame(double_column_frame, text="Настройки окна вывода:")
         screen_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nwe")
 
         # Настройки кодировки
-        encoding_frame = ttk.LabelFrame(screen_frame, text="Кодировка")
-        encoding_frame.grid(row=2, column=0, padx=10, pady=5, sticky="nwe")
+        encoding_frame = ttk.LabelFrame(double_column_frame, text="Кодировка")
+        encoding_frame.grid(row=0, column=1, padx=10, pady=5, sticky="nwe")
 
         # Кнопки выбора кодировок
         ttk.Radiobutton(encoding_frame, text="O2", variable=self.encoding, value="O2",
@@ -581,6 +584,9 @@ class SerialMonitorGUI:
                         # Удаляем символы новой строки и пробелы
                         stripped_line = line.strip()
                         if stripped_line:
+                            # Обрезка времени если данные сняты этой прогой через хекс
+                            if stripped_line[2:3] == ':':
+                                stripped_line = stripped_line[17:]
                             # Преобразуем строку в байты (если строка содержит HEX-представление данных)
                             try:
                                 buffer.append(bytes.fromhex(stripped_line))
