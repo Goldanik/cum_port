@@ -145,7 +145,6 @@ class SerialMonitorGUI:
         # Присваиваем себе функционал ткинтера
         self.gui = gui
         self.gui.title(__app_name__)
-        self.gui.iconbitmap("icon_small.ico")
         self.gui.geometry("1260x600")
         self.gui.minsize(1260,600)
 
