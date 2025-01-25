@@ -84,7 +84,7 @@ class GUIManager(ABC):
         """Запускает GUI."""
         pass
 
-__version__ = "1.09"
+__version__ = "1.10"
 __app_name__ = "CUM-port"
 
 class SerialMonitorGUI:
@@ -418,9 +418,8 @@ class SerialMonitorGUI:
         # Создание функционала копирования данных из таблицы по хоткею
         self.tree.bind('<Control-c>', self._copy_selection)
 
-        # Привязка события прокрутки к дереву после его создания:
-        self.tree.bind('<<TreeviewSelect>>', self._on_treeview_select)
-        self.tree.bind('<Motion>', self._on_treeview_motion)
+        # Привязка события прокрутки к дереву
+        self.tree.bind('<MouseWheel>', self._on_scroll)
 
         # Обработчик закрытия окна
         self.gui.protocol("WM_DELETE_WINDOW", self._on_app_closing)
@@ -549,12 +548,8 @@ class SerialMonitorGUI:
                 if search_text in row_text:
                     self.tree.item(item, tags=('highlight',))
 
-    def _on_treeview_select(self, event):
-        """Обработчик выделения в дереве"""
-        self._apply_highlight_to_visible()
-
-    def _on_treeview_motion(self, event):
-        """Обработчик движения мыши над деревом"""
+    def _on_scroll(self, event):
+        """Обработчик прокрутки таблицы"""
         self._apply_highlight_to_visible()
 
     def _check_tabs(self, event):
