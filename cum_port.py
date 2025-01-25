@@ -120,7 +120,10 @@ class SerialMonitorGUI:
         self.com_port_open = False
         self.udp_port_open = False
 
+        # Вкладка/интерфейс по умолчанию
         self.selected_tab = "COM-порт"
+        # Переключатель раскраски строк в таблице
+        self.flip_flop = False
 
         # Переменные для настроек COM-порта
         self.port = tk.StringVar()
@@ -383,7 +386,7 @@ class SerialMonitorGUI:
         self.search_entry.pack(side=tk.LEFT, padx=5)
 
         # Добавляем кнопку подсветки
-        self.highlight_button = ttk.Button(highlight_frame, text="Включить", command=self._toggle_highlight)
+        self.highlight_button = ttk.Button(highlight_frame, text="Включить подсветку", command=self._toggle_highlight)
         self.highlight_button.pack(side=tk.LEFT, padx=5)
 
         # Добавляем фрейм для галочек над таблицей
@@ -492,7 +495,7 @@ class SerialMonitorGUI:
         else:
             self.highlight_enabled = not self.highlight_enabled
             if self.highlight_enabled:
-                self.highlight_button.config(text="Подсветка включена")
+                self.highlight_button.config(text="Выключить подсветку")
                 # Блокируем строку ввода
                 self.search_entry.config(state='readonly')
                 self._apply_highlight_to_visible()
@@ -504,11 +507,13 @@ class SerialMonitorGUI:
 
     def _restore_row_colors(self):
         """Восстановление чередующихся цветов строк"""
+        local_flip_flop = False
         for idx, item in enumerate(self.tree.get_children()):
-            if idx % 2 == 0:
+            if local_flip_flop:
                 self.tree.item(item, tags=('evenrow',))
             else:
                 self.tree.item(item, tags=('oddrow',))
+            local_flip_flop = not local_flip_flop
 
     def _apply_highlight_to_visible(self):
         """Применение подсветки к видимым строкам"""
@@ -618,7 +623,7 @@ class SerialMonitorGUI:
 
     def _check_encoding(self):
         """Отключает столбцы и меняет их ширину в таблице данных в зависимости от выбранной кодировки."""
-        if self.com_port_open or self.udp_port_open or self.mac_addr[0]:
+        if self.com_port_open or self.udp_port_open:
             self.update_message_area(f"Для смены кодировки, закройте соединение если работали с портом, если работали с файлом очистите экран.")
         else:
             # Проверка открытой вкладки на запрещенные кодировки
@@ -807,10 +812,11 @@ class SerialMonitorGUI:
         item = self.tree.insert('', 'end', values=values)
 
         # Применяем чередование строк
-        if len(self.tree.get_children()) % 2 == 0:
+        if self.flip_flop:
             self.tree.item(item, tags=('evenrow',))
         else:
             self.tree.item(item, tags=('oddrow',))
+        self.flip_flop = not self.flip_flop
 
         # Применяем подсветку сразу при добавлении, если она включена
         if self.highlight_enabled:

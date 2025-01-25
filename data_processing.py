@@ -441,7 +441,12 @@ class DataProcessing:
                                     decode = decode_packet
                                     # Дополняем общую длину пакета длиной данных
                                     data_len = decode_packet[0]
-                                    packet_len = f"{overall_len}/{data_len}"
+                                    # Проверка на пачку слипшихся пакетов
+                                    if (data_len != 0) and (len(decode_packet) > data_len):
+                                        packet_len = f"{overall_len}/{data_len}/{decode_packet[data_len]}"
+                                        packet_num = str(packet_num) + "+" + str(packet_num + 1)
+                                    else:
+                                        packet_len = f"{overall_len}/{data_len}"
                     except Exception as e:
                         self.main_gui.update_message_area(f"Ошибка при парсинге данных: {e}")
             # Отправка данных на экран и в лог-файл
